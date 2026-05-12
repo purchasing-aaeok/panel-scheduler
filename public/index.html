@@ -959,7 +959,7 @@ function makePoolCard(p){
   const col=colorForCustomer(p.customer||''),d=document.createElement('div');
   d.className='pool-card';d.dataset.id=p.id;d.style.borderLeftColor=col;
   // No job or customer in meta — already shown in parent headers
-  d.innerHTML='<div class="pool-card-name" title="Double-click to rename">'+(p.job?esc(p.job)+' ':'')+esc(p.name)+'</div>'+
+  d.innerHTML='<div class="pool-card-name" title="Double-click to rename">'+esc(p.name)+'</div>'+
     '<div class="pool-card-meta"><span>'+p.buildHrs+'h build</span></div>'+
     '<button class="pool-card-del" title="Remove from list" onclick="deletePoolCard('+p.id+')">×</button>';
   d.querySelector('.pool-card-name').addEventListener('dblclick',ev=>{ev.stopPropagation();ev.preventDefault();startPoolRename(p.id,d);});
@@ -1058,13 +1058,13 @@ function openModal(id){document.getElementById(id).classList.add('open');}
 function closeModal(id){document.getElementById(id).classList.remove('open');}
 document.querySelectorAll('.modal-bg').forEach(bg=>bg.addEventListener('mousedown',ev=>{if(ev.target===bg)bg.classList.remove('open');}));
 function saveHTML(){
-  const state={employees,scheduled,pool,nextId,cellW,blockedDates,blockedRecur,deletedPoolIds:Array.from(deletedPoolIds),customerColors,startDate:document.getElementById('ctrl-start').value,weeks:document.getElementById('ctrl-weeks').value};
+  const state={employees,scheduled,nextId,cellW,blockedDates,blockedRecur,deletedPoolIds:Array.from(deletedPoolIds),customerColors,startDate:document.getElementById('ctrl-start').value,weeks:document.getElementById('ctrl-weeks').value};
   fetch('/api/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(state)}).then(r=>r.json()).then(d=>{if(d.ok){const btn=document.querySelector('button.primary');const orig=btn.innerHTML;btn.innerHTML='\u2713 Saved';btn.style.background='#00d4aa';setTimeout(()=>{btn.innerHTML=orig;btn.style.background='';},1800);}else{alert('Save failed: '+d.error);}}).catch(e=>alert('Save failed: '+e.message));
 }
 
 function applyState(st){
   if(!st)return false;
-  employees=st.employees||employees;pool=st.pool||pool;scheduled=st.scheduled||[];nextId=st.nextId||nextId;
+  employees=st.employees||employees;scheduled=st.scheduled||[];nextId=st.nextId||nextId;
   cellW=(st.cellW&&st.cellW<=40)?st.cellW:14;blockedDates=st.blockedDates||[];blockedRecur=st.blockedRecur||[];
   deletedPoolIds=new Set(st.deletedPoolIds||[]);
   if(st.customerColors)Object.assign(customerColors,st.customerColors);
