@@ -671,14 +671,14 @@ function render(){
           const textY1=BAR_TOP+BAR_H/2+(multiLine?-3:4);
           const textY2=BAR_TOP+BAR_H/2+8;
           ctx.save();
-          // Clip to total bar width so text stays inside the bar
-          ctx.beginPath();ctx.rect(hitLeft+2,BAR_TOP+1,totalBarW-4,BAR_H-2);ctx.clip();
-          // Measure text and truncate only if it won't fit
+          // Clip to bar bounds
+          ctx.beginPath();ctx.rect(hitLeft+2,BAR_TOP+1,hitRight-hitLeft-4,BAR_H-2);ctx.clip();
+          // Measure text against available bar width and truncate only if needed
           ctx.font='600 11px IBM Plex Mono,monospace';ctx.textAlign='left';
-          const maxW=totalBarW-textX-hitLeft-6;
+          const availW=hitRight-textX-4;
           let lbl=fullName;
-          if(ctx.measureText(lbl).width>maxW){
-            while(lbl.length>1&&ctx.measureText(lbl+'…').width>maxW) lbl=lbl.slice(0,-1);
+          if(ctx.measureText(lbl).width>availW){
+            while(lbl.length>1&&ctx.measureText(lbl+'…').width>availW) lbl=lbl.slice(0,-1);
             lbl+='…';
           }
           ctx.shadowColor='rgba(0,0,0,0.9)';ctx.shadowBlur=0;
