@@ -134,7 +134,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--font-sans);font-si
   </div>
   <div class="body-split">
     <div class="pool-panel">
-      <div class="pool-header">Unscheduled <span class="pool-count" id="pool-count">372</span></div>
+      <div class="pool-header">Unscheduled <span class="pool-count" id="pool-count">0</span><button id="collapse-all-btn" onclick="collapseAll()" title="Collapse / expand all" style="margin-left:auto;background:transparent;border:1px solid var(--border2);border-radius:3px;color:var(--muted);font-family:var(--font-mono);font-size:10px;padding:2px 7px;cursor:pointer;white-space:nowrap">&#x22BF; All</button></div>
       <div class="pool-toolbar">
         <input type="text" id="pool-search" placeholder="Search…" oninput="renderPool()">
 
@@ -857,6 +857,23 @@ window.addEventListener('mouseup',ev=>{
 const collapseState={};
 function toggleCollapse(key){collapseState[key]=!collapseState[key];renderPool();}
 function isCollapsed(key){return collapseState[key]===true;}
+function collapseAll(){
+  // Build list of all customer and job keys currently visible
+  const keys=[];
+  pool.forEach(p=>{
+    if(deletedPoolIds.has(p.id)||scheduled.find(s=>s.srcId===p.id)) return;
+    const ck='c:'+(p.customer||'Unknown');
+    if(!keys.includes(ck)) keys.push(ck);
+    const jk='j:'+(p.customer||'Unknown')+':'+(p.job||'');
+    if(!keys.includes(jk)) keys.push(jk);
+  });
+  // If everything is collapsed, expand all; otherwise collapse all
+  const allCollapsed=keys.every(k=>collapseState[k]===true);
+  keys.forEach(k=>{collapseState[k]=!allCollapsed;});
+  const btn=document.getElementById('collapse-all-btn');
+  if(btn) btn.innerHTML=allCollapsed?'&#x22BF; All':'&#x22BE; All';
+  renderPool();
+}
 
 function renderPool(){
   const list=document.getElementById('pool-list');
