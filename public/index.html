@@ -135,7 +135,9 @@ body{background:var(--bg);color:var(--text);font-family:var(--font-sans);font-si
   </div>
   <div class="body-split">
     <div class="pool-panel">
-      <div class="pool-header">Unscheduled <span class="pool-count" id="pool-count">372</span></div>
+      <div class="pool-header">Unscheduled <span class="pool-count" id="pool-count">0</span>
+        <button onclick="collapseAll()" id="collapse-btn" title="Collapse all" style="background:transparent;border:1px solid var(--border2);border-radius:3px;color:var(--muted);font-family:var(--font-mono);font-size:10px;padding:2px 7px;cursor:pointer;margin-left:auto;white-space:nowrap">⊟ All</button>
+      </div>
       <div class="pool-toolbar">
         <input type="text" id="pool-search" placeholder="Search…" oninput="renderPool()">
 
@@ -283,234 +285,8 @@ let blockedDates=[],blockedRecur=[];
 const DEFAULT_CUST_COLORS={'AI':'#4a9eff','J&J':'#ff7a45','Devon':'#c77dff','Devon DBBU':'#00d4aa',"Devon S'tx":'#ffd166','Devon UWP':'#06d6a0'};
 let customerColors=Object.assign({},DEFAULT_CUST_COLORS);
 function colorForCustomer(c){if(!customerColors[c]){const P=['#ef476f','#90e0ef','#52b788','#f4a261','#a8dadc'];customerColors[c]=P[Object.keys(customerColors).length%P.length];}return customerColors[c];}
-const RAW=[
-  {customer:'AI',job:'8071',name:'Chiller Control',qty:15,buildHrs:40},
-  {customer:'AI',job:'8071',name:'CMS Primary',qty:3,buildHrs:40},
-  {customer:'AI',job:'8071',name:'CMS Primary',qty:6,buildHrs:40},
-  {customer:'AI',job:'8071',name:'Chiller Base',qty:1,buildHrs:40},
-  {customer:'AI',job:'8088',name:'AI IO',qty:1,buildHrs:16},
-  {customer:'J&J',job:'8115',name:'OXY JBOX',qty:22,buildHrs:4},
-  {customer:'Devon',job:'8050-10',name:'RIOV3.2',qty:6,buildHrs:10},
-  {customer:'Devon',job:'8050-20',name:'RIOV3.2',qty:6,buildHrs:10},
-  {customer:'Devon',job:'8050-30',name:'RIOV3.2',qty:6,buildHrs:10},
-  {customer:'Devon',job:'8002',name:'RIOV3.2',qty:6,buildHrs:10},
-  {customer:'Devon',job:'8087',name:'RIOV3.2-ND',qty:4,buildHrs:13},
-  {customer:'Devon',job:'8098',name:'RIOV4',qty:2,buildHrs:6},
-  {customer:'Devon',job:'8101',name:'ABBU-RIOV4',qty:8,buildHrs:6},
-  {customer:'Devon',job:'8107',name:'RIOV3.2-ND',qty:5,buildHrs:13},
-  {customer:'Devon',job:'8109',name:'CP4',qty:3,buildHrs:6},
-  {customer:'Devon',job:'8109',name:'CP10',qty:1,buildHrs:30},
-  {customer:'Devon',job:'8109',name:'PS100',qty:4,buildHrs:8},
-  {customer:'Devon',job:'8109',name:'10Hp VFD',qty:2,buildHrs:7},
-  {customer:'Devon',job:'8111',name:'Water Panel',qty:4,buildHrs:8},
-  {customer:'Devon ABBU',job:'8041',name:'CP10',qty:1,buildHrs:30},
-  {customer:'Devon ABBU',job:'8041',name:'PS410',qty:1,buildHrs:8},
-  {customer:'Devon ABBU',job:'8041',name:'IJB600',qty:1,buildHrs:3},
-  {customer:'Devon ABBU',job:'8041',name:'LCP1',qty:1,buildHrs:2},
-  {customer:'Devon ABBU',job:'8041',name:'DP1',qty:1,buildHrs:4},
-  {customer:'Devon ABBU',job:'8041',name:'LP1',qty:1,buildHrs:2},
-  {customer:'Devon ABBU',job:'8041',name:'Pump Panel',qty:1,buildHrs:3},
-  {customer:'Devon ABBU',job:'8041',name:'PM101',qty:1,buildHrs:3},
-  {customer:'Devon ABBU',job:'8042',name:'CP10',qty:1,buildHrs:30},
-  {customer:'Devon ABBU',job:'8042',name:'PS410',qty:1,buildHrs:8},
-  {customer:'Devon ABBU',job:'8042',name:'IJB600',qty:1,buildHrs:3},
-  {customer:'Devon ABBU',job:'8042',name:'LCP1',qty:1,buildHrs:2},
-  {customer:'Devon ABBU',job:'8042',name:'DP1',qty:1,buildHrs:4},
-  {customer:'Devon ABBU',job:'8042',name:'LP1',qty:1,buildHrs:2},
-  {customer:'Devon ABBU',job:'8042',name:'Pump Panel',qty:1,buildHrs:3},
-  {customer:'Devon ABBU',job:'8042',name:'PM101',qty:1,buildHrs:3},
-  {customer:'Devon ABBU',job:'8043',name:'CP10',qty:1,buildHrs:30},
-  {customer:'Devon ABBU',job:'8043',name:'PS410',qty:1,buildHrs:8},
-  {customer:'Devon ABBU',job:'8043',name:'IJB600',qty:1,buildHrs:3},
-  {customer:'Devon ABBU',job:'8043',name:'LCP1',qty:1,buildHrs:2},
-  {customer:'Devon ABBU',job:'8043',name:'DP1',qty:1,buildHrs:4},
-  {customer:'Devon ABBU',job:'8043',name:'LP1',qty:1,buildHrs:2},
-  {customer:'Devon ABBU',job:'8043',name:'Pump Panel',qty:1,buildHrs:3},
-  {customer:'Devon ABBU',job:'8043',name:'PM101',qty:1,buildHrs:3},
-  {customer:'Devon ABBU',job:'8044',name:'CP10',qty:1,buildHrs:30},
-  {customer:'Devon ABBU',job:'8044',name:'PS410',qty:1,buildHrs:8},
-  {customer:'Devon ABBU',job:'8044',name:'IJB600',qty:1,buildHrs:3},
-  {customer:'Devon ABBU',job:'8044',name:'LCP1',qty:1,buildHrs:2},
-  {customer:'Devon ABBU',job:'8044',name:'DP1',qty:1,buildHrs:4},
-  {customer:'Devon ABBU',job:'8044',name:'LP1',qty:1,buildHrs:2},
-  {customer:'Devon ABBU',job:'8044',name:'Pump Panel',qty:1,buildHrs:3},
-  {customer:'Devon ABBU',job:'8044',name:'PM101',qty:1,buildHrs:3},
-  {customer:'Devon ABBU',job:'8045',name:'CP10',qty:1,buildHrs:30},
-  {customer:'Devon ABBU',job:'8045',name:'PS410',qty:1,buildHrs:8},
-  {customer:'Devon ABBU',job:'8045',name:'IJB600',qty:1,buildHrs:3},
-  {customer:'Devon ABBU',job:'8045',name:'LCP1',qty:1,buildHrs:2},
-  {customer:'Devon ABBU',job:'8045',name:'DP1',qty:1,buildHrs:4},
-  {customer:'Devon ABBU',job:'8045',name:'LP1',qty:1,buildHrs:2},
-  {customer:'Devon ABBU',job:'8045',name:'Pump Panel',qty:1,buildHrs:3},
-  {customer:'Devon ABBU',job:'8045',name:'PM101',qty:1,buildHrs:3},
-  {customer:'Devon ABBU',job:'8046',name:'CP10',qty:1,buildHrs:30},
-  {customer:'Devon ABBU',job:'8046',name:'PS410',qty:1,buildHrs:8},
-  {customer:'Devon ABBU',job:'8046',name:'IJB600',qty:1,buildHrs:3},
-  {customer:'Devon ABBU',job:'8046',name:'LCP1',qty:1,buildHrs:2},
-  {customer:'Devon ABBU',job:'8046',name:'DP1',qty:1,buildHrs:4},
-  {customer:'Devon ABBU',job:'8046',name:'LP1',qty:1,buildHrs:2},
-  {customer:'Devon ABBU',job:'8046',name:'Pump Panel',qty:1,buildHrs:3},
-  {customer:'Devon ABBU',job:'8046',name:'PM101',qty:1,buildHrs:3},
-  {customer:'Devon ABBU',job:'8047',name:'CP10',qty:2,buildHrs:30},
-  {customer:'Devon ABBU',job:'8047',name:'PS410',qty:1,buildHrs:8},
-  {customer:'Devon ABBU',job:'8047',name:'IJB600',qty:1,buildHrs:3},
-  {customer:'Devon ABBU',job:'8047',name:'LCP1',qty:1,buildHrs:2},
-  {customer:'Devon ABBU',job:'8047',name:'DP1',qty:1,buildHrs:4},
-  {customer:'Devon ABBU',job:'8047',name:'LP1',qty:1,buildHrs:2},
-  {customer:'Devon ABBU',job:'8047',name:'Pump Panel',qty:1,buildHrs:3},
-  {customer:'Devon ABBU',job:'8047',name:'PM101',qty:1,buildHrs:3},
-  {customer:'Devon ABBU',job:'8048',name:'PS410',qty:1,buildHrs:8},
-  {customer:'Devon ABBU',job:'8048',name:'IJB600',qty:1,buildHrs:3},
-  {customer:'Devon ABBU',job:'8048',name:'LCP1',qty:1,buildHrs:2},
-  {customer:'Devon ABBU',job:'8048',name:'DP1',qty:1,buildHrs:4},
-  {customer:'Devon ABBU',job:'8048',name:'LP1',qty:1,buildHrs:2},
-  {customer:'Devon ABBU',job:'8048',name:'Pump Panel',qty:1,buildHrs:3},
-  {customer:'Devon ABBU',job:'8048',name:'PM101',qty:1,buildHrs:3},
-  {customer:'Devon DBBU',job:'7956',name:'LCP1',qty:1,buildHrs:2},
-  {customer:'Devon DBBU',job:'7956',name:'PS410',qty:1,buildHrs:8},
-  {customer:'Devon DBBU',job:'7956',name:'IJB600',qty:1,buildHrs:3},
-  {customer:'Devon DBBU',job:'7956',name:'PM101',qty:2,buildHrs:3},
-  {customer:'Devon DBBU',job:'7956',name:'LP1',qty:1,buildHrs:1},
-  {customer:'Devon DBBU',job:'7956',name:'DP1',qty:1,buildHrs:4},
-  {customer:'Devon DBBU',job:'7956',name:'100Hp VFD',qty:3,buildHrs:12},
-  {customer:'Devon DBBU',job:'7956',name:'Pump Panels',qty:1,buildHrs:3},
-  {customer:'Devon DBBU',job:'7956',name:'CP10',qty:1,buildHrs:30},
-  {customer:'Devon DBBU',job:'7957',name:'LCP1',qty:1,buildHrs:2},
-  {customer:'Devon DBBU',job:'7957',name:'PS410',qty:1,buildHrs:8},
-  {customer:'Devon DBBU',job:'7957',name:'IJB600',qty:1,buildHrs:3},
-  {customer:'Devon DBBU',job:'7957',name:'PM101',qty:1,buildHrs:3},
-  {customer:'Devon DBBU',job:'7957',name:'LP1',qty:1,buildHrs:1},
-  {customer:'Devon DBBU',job:'7957',name:'DP1',qty:1,buildHrs:4},
-  {customer:'Devon DBBU',job:'7957',name:'100Hp VFD',qty:3,buildHrs:12},
-  {customer:'Devon DBBU',job:'7957',name:'Pump Panels',qty:1,buildHrs:3},
-  {customer:'Devon DBBU',job:'7957',name:'CP10',qty:1,buildHrs:30},
-  {customer:'Devon DBBU',job:'7958',name:'LCP1',qty:1,buildHrs:2},
-  {customer:'Devon DBBU',job:'7958',name:'PS410',qty:1,buildHrs:8},
-  {customer:'Devon DBBU',job:'7958',name:'IJB600',qty:1,buildHrs:3},
-  {customer:'Devon DBBU',job:'7958',name:'PM101',qty:1,buildHrs:3},
-  {customer:'Devon DBBU',job:'7958',name:'LP1',qty:1,buildHrs:1},
-  {customer:'Devon DBBU',job:'7958',name:'DP1',qty:1,buildHrs:4},
-  {customer:'Devon DBBU',job:'7958',name:'100Hp VFD',qty:3,buildHrs:12},
-  {customer:'Devon DBBU',job:'7958',name:'Pump Panels',qty:1,buildHrs:3},
-  {customer:'Devon DBBU',job:'7958',name:'CP10',qty:1,buildHrs:30},
-  {customer:'Devon DBBU',job:'8058',name:'LCP1',qty:1,buildHrs:2},
-  {customer:'Devon DBBU',job:'8058',name:'PS410',qty:1,buildHrs:8},
-  {customer:'Devon DBBU',job:'8058',name:'IJB600',qty:1,buildHrs:3},
-  {customer:'Devon DBBU',job:'8058',name:'PM101',qty:1,buildHrs:3},
-  {customer:'Devon DBBU',job:'8058',name:'LP1',qty:1,buildHrs:1},
-  {customer:'Devon DBBU',job:'8058',name:'DP1',qty:1,buildHrs:4},
-  {customer:'Devon DBBU',job:'8058',name:'100Hp VFD',qty:3,buildHrs:12},
-  {customer:'Devon DBBU',job:'8058',name:'Pump Panels',qty:1,buildHrs:3},
-  {customer:'Devon DBBU',job:'8058',name:'CP10',qty:1,buildHrs:30},
-  {customer:'Devon DBBU',job:'8059',name:'LCP1',qty:1,buildHrs:2},
-  {customer:'Devon DBBU',job:'8059',name:'PS410',qty:1,buildHrs:8},
-  {customer:'Devon DBBU',job:'8059',name:'IJB600',qty:1,buildHrs:3},
-  {customer:'Devon DBBU',job:'8059',name:'PM101',qty:1,buildHrs:3},
-  {customer:'Devon DBBU',job:'8059',name:'LP1',qty:1,buildHrs:1},
-  {customer:'Devon DBBU',job:'8059',name:'DP1',qty:1,buildHrs:4},
-  {customer:'Devon DBBU',job:'8059',name:'100Hp VFD',qty:3,buildHrs:12},
-  {customer:'Devon DBBU',job:'8059',name:'Pump Panels',qty:1,buildHrs:3},
-  {customer:'Devon DBBU',job:'8059',name:'CP10',qty:1,buildHrs:30},
-  {customer:'Devon DBBU',job:'8060',name:'LCP1',qty:1,buildHrs:2},
-  {customer:'Devon DBBU',job:'8060',name:'PS410',qty:1,buildHrs:8},
-  {customer:'Devon DBBU',job:'8060',name:'IJB600',qty:1,buildHrs:3},
-  {customer:'Devon DBBU',job:'8060',name:'PM101',qty:1,buildHrs:3},
-  {customer:'Devon DBBU',job:'8060',name:'LP1',qty:1,buildHrs:1},
-  {customer:'Devon DBBU',job:'8060',name:'DP1',qty:1,buildHrs:4},
-  {customer:'Devon DBBU',job:'8060',name:'100Hp VFD',qty:3,buildHrs:12},
-  {customer:'Devon DBBU',job:'8060',name:'Pump Panels',qty:1,buildHrs:3},
-  {customer:'Devon DBBU',job:'8060',name:'CP10',qty:1,buildHrs:30},
-  {customer:'Devon DBBU',job:'8061',name:'LCP1',qty:1,buildHrs:2},
-  {customer:'Devon DBBU',job:'8061',name:'PS410',qty:1,buildHrs:8},
-  {customer:'Devon DBBU',job:'8061',name:'IJB600',qty:1,buildHrs:3},
-  {customer:'Devon DBBU',job:'8061',name:'PM101',qty:1,buildHrs:3},
-  {customer:'Devon DBBU',job:'8061',name:'LP1',qty:1,buildHrs:1},
-  {customer:'Devon DBBU',job:'8061',name:'DP1',qty:1,buildHrs:4},
-  {customer:'Devon DBBU',job:'8061',name:'100Hp VFD',qty:3,buildHrs:12},
-  {customer:'Devon DBBU',job:'8061',name:'Pump Panels',qty:1,buildHrs:3},
-  {customer:'Devon DBBU',job:'8061',name:'CP10',qty:1,buildHrs:30},
-  {customer:'Devon DBBU',job:'8062',name:'LCP1',qty:1,buildHrs:2},
-  {customer:'Devon DBBU',job:'8062',name:'PS410',qty:1,buildHrs:8},
-  {customer:'Devon DBBU',job:'8062',name:'IJB600',qty:1,buildHrs:3},
-  {customer:'Devon DBBU',job:'8062',name:'PM101',qty:1,buildHrs:3},
-  {customer:'Devon DBBU',job:'8062',name:'LP1',qty:1,buildHrs:1},
-  {customer:'Devon DBBU',job:'8062',name:'DP1',qty:1,buildHrs:4},
-  {customer:'Devon DBBU',job:'8062',name:'100Hp VFD',qty:3,buildHrs:12},
-  {customer:'Devon DBBU',job:'8062',name:'Pump Panels',qty:1,buildHrs:3},
-  {customer:'Devon DBBU',job:'8062',name:'CP10',qty:1,buildHrs:30},
-  {customer:'Devon DBBU',job:'8063',name:'LCP1',qty:1,buildHrs:2},
-  {customer:'Devon DBBU',job:'8063',name:'PS410',qty:1,buildHrs:8},
-  {customer:'Devon DBBU',job:'8063',name:'IJB600',qty:1,buildHrs:3},
-  {customer:'Devon DBBU',job:'8063',name:'PM101',qty:1,buildHrs:3},
-  {customer:'Devon DBBU',job:'8063',name:'LP1',qty:1,buildHrs:1},
-  {customer:'Devon DBBU',job:'8063',name:'DP1',qty:1,buildHrs:4},
-  {customer:'Devon DBBU',job:'8063',name:'100Hp VFD',qty:3,buildHrs:12},
-  {customer:'Devon DBBU',job:'8063',name:'Pump Panels',qty:1,buildHrs:3},
-  {customer:'Devon DBBU',job:'8063',name:'CP10',qty:1,buildHrs:30},
-  {customer:'Devon DBBU',job:'8064',name:'LCP1',qty:1,buildHrs:2},
-  {customer:'Devon DBBU',job:'8064',name:'PS410',qty:1,buildHrs:8},
-  {customer:'Devon DBBU',job:'8064',name:'IJB600',qty:1,buildHrs:3},
-  {customer:'Devon DBBU',job:'8064',name:'PM101',qty:1,buildHrs:3},
-  {customer:'Devon DBBU',job:'8064',name:'LP1',qty:1,buildHrs:1},
-  {customer:'Devon DBBU',job:'8064',name:'DP1',qty:1,buildHrs:4},
-  {customer:'Devon DBBU',job:'8064',name:'100Hp VFD',qty:3,buildHrs:12},
-  {customer:'Devon DBBU',job:'8064',name:'Pump Panels',qty:1,buildHrs:3},
-  {customer:'Devon DBBU',job:'8064',name:'CP10',qty:1,buildHrs:30},
-  {customer:'Devon DBBU',job:'8065',name:'LCP1',qty:1,buildHrs:2},
-  {customer:'Devon DBBU',job:'8065',name:'PS410',qty:1,buildHrs:8},
-  {customer:'Devon DBBU',job:'8065',name:'IJB600',qty:1,buildHrs:3},
-  {customer:'Devon DBBU',job:'8065',name:'PM101',qty:1,buildHrs:3},
-  {customer:'Devon DBBU',job:'8065',name:'LP1',qty:1,buildHrs:1},
-  {customer:'Devon DBBU',job:'8065',name:'DP1',qty:1,buildHrs:4},
-  {customer:'Devon DBBU',job:'8065',name:'100Hp VFD',qty:3,buildHrs:12},
-  {customer:'Devon DBBU',job:'8065',name:'Pump Panels',qty:1,buildHrs:3},
-  {customer:'Devon DBBU',job:'8065',name:'CP10',qty:1,buildHrs:30},
-  {customer:'Devon DBBU',job:'8066',name:'LCP1',qty:1,buildHrs:2},
-  {customer:'Devon DBBU',job:'8066',name:'PS410',qty:1,buildHrs:8},
-  {customer:'Devon DBBU',job:'8066',name:'IJB600',qty:1,buildHrs:3},
-  {customer:'Devon DBBU',job:'8066',name:'PM101',qty:1,buildHrs:3},
-  {customer:'Devon DBBU',job:'8066',name:'LP1',qty:1,buildHrs:1},
-  {customer:'Devon DBBU',job:'8066',name:'DP1',qty:1,buildHrs:4},
-  {customer:'Devon DBBU',job:'8066',name:'100Hp VFD',qty:3,buildHrs:12},
-  {customer:'Devon DBBU',job:'8066',name:'Pump Panels',qty:1,buildHrs:3},
-  {customer:'Devon DBBU',job:'8066',name:'CP10',qty:1,buildHrs:30},
-  {customer:"Devon S'tx",job:'8079',name:'RIOV4',qty:4,buildHrs:6},
-  {customer:"Devon S'tx",job:'8079',name:'CP10',qty:1,buildHrs:30},
-  {customer:"Devon S'tx",job:'8079',name:'PS100',qty:2,buildHrs:4},
-  {customer:"Devon S'tx",job:'8079',name:'PS410',qty:1,buildHrs:8},
-  {customer:"Devon S'tx",job:'8079',name:'IJB600',qty:1,buildHrs:3},
-  {customer:"Devon S'tx",job:'8079',name:'LCP1',qty:1,buildHrs:2},
-  {customer:"Devon S'tx",job:'8079',name:'DP1',qty:1,buildHrs:4},
-  {customer:"Devon S'tx",job:'8079',name:'LP1',qty:1,buildHrs:2},
-  {customer:"Devon S'tx",job:'8079',name:'40Hp VFD',qty:1,buildHrs:7},
-  {customer:"Devon S'tx",job:'8080',name:'RIOV4',qty:4,buildHrs:6},
-  {customer:"Devon S'tx",job:'8080',name:'CP10',qty:1,buildHrs:30},
-  {customer:"Devon S'tx",job:'8080',name:'PS100',qty:2,buildHrs:4},
-  {customer:"Devon S'tx",job:'8080',name:'PS410',qty:1,buildHrs:8},
-  {customer:"Devon S'tx",job:'8080',name:'IJB600',qty:1,buildHrs:3},
-  {customer:"Devon S'tx",job:'8080',name:'LCP1',qty:1,buildHrs:2},
-  {customer:"Devon S'tx",job:'8080',name:'DP1',qty:1,buildHrs:4},
-  {customer:"Devon S'tx",job:'8080',name:'LP1',qty:1,buildHrs:2},
-  {customer:"Devon S'tx",job:'8080',name:'40Hp VFD',qty:1,buildHrs:7},
-  {customer:"Devon S'tx",job:'8092',name:'RIOV4',qty:6,buildHrs:6},
-  {customer:"Devon S'tx",job:'8092',name:'CP10',qty:1,buildHrs:1},
-  {customer:"Devon S'tx",job:'8092',name:'PS100',qty:3,buildHrs:4},
-  {customer:"Devon S'tx",job:'8092',name:'PS410',qty:1,buildHrs:8},
-  {customer:"Devon S'tx",job:'8092',name:'IJB600',qty:1,buildHrs:3},
-  {customer:"Devon S'tx",job:'8092',name:'LCP1',qty:1,buildHrs:2},
-  {customer:"Devon S'tx",job:'8092',name:'DP1',qty:1,buildHrs:4},
-  {customer:"Devon S'tx",job:'8092',name:'LP1',qty:1,buildHrs:2},
-  {customer:"Devon S'tx",job:'8092',name:'40Hp VFD',qty:2,buildHrs:7},
-  {customer:'Devon UWP',job:'8069 (1st batch)',name:'CP30',qty:5,buildHrs:16},
-  {customer:'Devon UWP',job:'8069 (2nd batch)',name:'CP30',qty:5,buildHrs:16},
-  {customer:'Devon UWP',job:'8069 (3rd batch)',name:'CP30',qty:5,buildHrs:16},
-  {customer:'Devon UWP',job:'8069 (1st batch)',name:'PS430',qty:5,buildHrs:7},
-  {customer:'Devon UWP',job:'8069 (2nd batch)',name:'PS430',qty:5,buildHrs:7},
-  {customer:'Devon UWP',job:'8069 (3rd batch)',name:'PS430',qty:5,buildHrs:7},
-];
-let nextId=1;
-let pool=[];
-RAW.forEach(r=>{for(let i=0;i<r.qty;i++){pool.push({id:nextId++,job:r.job,customer:r.customer,name:r.qty>1?r.name+' #'+(i+1):r.name,baseName:r.name,buildHrs:r.buildHrs});}});
+const RAW=[];  // populated from /api/panels on load
+let nextId=1,pool=[];
 let deletedPoolIds=new Set();
 let scheduled=[];
 function isDayBlocked(ei,date){
@@ -994,6 +770,22 @@ window.addEventListener('mouseup',ev=>{
 const collapseState={};
 function toggleCollapse(key){collapseState[key]=!collapseState[key];renderPool();}
 function isCollapsed(key){return collapseState[key]===true;}
+function collapseAll(){
+  // Toggle: if anything is expanded, collapse all; if all collapsed, expand all
+  const keys=[];
+  pool.forEach(p=>{
+    if(!p.customer) return;
+    const ck='c:'+p.customer;
+    if(!keys.includes(ck)) keys.push(ck);
+    const jk='j:'+p.customer+':'+p.job;
+    if(!keys.includes(jk)) keys.push(jk);
+  });
+  const allCollapsed=keys.every(k=>collapseState[k]===true);
+  keys.forEach(k=>{ collapseState[k]=!allCollapsed; });
+  const btn=document.getElementById('collapse-btn');
+  if(btn) btn.textContent=allCollapsed?'⊟ All':'⊞ All';
+  renderPool();
+}
 
 function renderPool(){
   const list=document.getElementById('pool-list');
@@ -1222,10 +1014,24 @@ function applyState(st){
 
 document.addEventListener('DOMContentLoaded',function(){
   document.getElementById('ctrl-start').value=dateStr(nextMonday());
-  fetch('/api/load')
-    .then(r=>r.json())
-    .then(d=>{if(d.ok&&d.state){applyState(d.state);}render();})
-    .catch(()=>render());
+  // Fetch panels from Excel and saved schedule state in parallel
+  Promise.all([
+    fetch('/api/panels').then(r=>r.json()).catch(()=>({ok:false,panels:[]})),
+    fetch('/api/load').then(r=>r.json()).catch(()=>({ok:false,state:null}))
+  ]).then(([panelData, stateData]) => {
+    // Build pool from server-parsed Excel data
+    if(panelData.ok && panelData.panels.length){
+      pool = panelData.panels;
+      nextId = pool.length + 1;
+      // Seed color map
+      pool.forEach(p=>colorForCustomer(p.customer||''));
+    }
+    // Apply saved schedule on top
+    if(stateData.ok && stateData.state){
+      applyState(stateData.state);
+    }
+    render();
+  });
 });
 </script>
 
