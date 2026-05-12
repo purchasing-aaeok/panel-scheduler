@@ -486,7 +486,7 @@ function getWorkDays(){
 const canvas=document.getElementById('gantt-canvas');
 const ctx=canvas.getContext('2d');
 let hitRegions=[];
-function getByEmp(ei){return scheduled.filter(s=>s.empIdx===ei).sort((a,b)=>(a.startHour||0)-(b.startHour||0))}
+function getByEmp(ei){return scheduled.filter(s=>s.empIdx===ei).sort((a,b)=>schedToAbsHour(a)-schedToAbsHour(b))}
 function roundRect(x,y,w,h,r,fill){
   if(w<0.5)return;
   ctx.beginPath();ctx.moveTo(x+r,y);ctx.lineTo(x+w-r,y);ctx.quadraticCurveTo(x+w,y,x+w,y+r);
@@ -614,18 +614,22 @@ function render(){
     // Draw bars as filled hour cells
     const dayAvail=days.map(d=>!isDayBlocked(ei,d));
     // Build a lookup: available-hour-index → {dayIdx, hourInDay, pixelX}
-    const hourMap=[];
-    for(let di=0;di<days.length;di++){
-      if(!dayAvail[di]) continue;
-      for(let h=0;h<HPD;h++){
-        hourMap.push({di,h,px:LABEL_W+di*dayW+h*cellW});
-      }
-    }
+    const schedMap=schedToHourMap(ei);
     getByEmp(ei).forEach(s=>{
-      const startHour=s.startHour||0;
-      if(startHour>=hourMap.length) return;
-
-      // Walk through hours — PASS 1: fills and gloss only (no dividers yet)
+      if(!s.schedDate) return;
+      if(schedMap[s.schedDate+':'+(s.schedHour||0)]===undefined) return;
+      // Build ordered list of available hour pixels from this panel's start date/hour
+      const iterHours=[];
+      let tdi=-1;
+      for(let di=0;di<days.length;di++){if(dayAvail[di]&&dateStr(days[di])===s.schedDate){tdi=di;break;}}
+      if(tdi===-1) return;
+      let curDi=tdi,curH=s.schedHour||0;
+      while(iterHours.length<s.buildHrs&&curDi<days.length){
+        if(dayAvail[curDi]){iterHours.push({px:LABEL_W+curDi*dayW+curH*cellW});curH++;if(curH>=HPD){curH=0;curDi++;}}
+        else{curDi++;curH=0;}
+      }
+      let hi=0;
+      // Walk through hours — PASS 1 — PASS 1: fills and gloss only (no dividers yet)
       let remainHrs=s.buildHrs;
       let hi=startHour; // index into hourMap
       let hourInDay=hourMap[hi]?hourMap[hi].h:0;
@@ -637,8 +641,8 @@ function render(){
       const totalCells=s.buildHrs;
       // Collect all cell positions for divider pass
       const cellPositions=[];
-      while(remainHrs>0&&hi<hourMap.length){
-        const {px:hx}=hourMap[hi];
+      while(remainHrs>0&&hi<iterHours.length){
+        const {px:hx}=iterHours[hi];
         const firstCell=totalCellsDrawn===0;
         const lastCell=totalCellsDrawn===totalCells-1;
         const pad=1;
@@ -722,47 +726,93 @@ function renderDashboard(){
 function hitTest(cx,cy){for(let i=hitRegions.length-1;i>=0;i--){const r=hitRegions[i];if(cx>=r.x&&cx<=r.x+r.w&&cy>=r.y&&cy<=r.y+r.h)return r;}return null;}
 function empAtY(cy){if(cy<HEADER_H)return -1;const ei=Math.floor((cy-HEADER_H)/ROW_H);return ei>=0&&ei<employees.length?ei:-1;}
 function pxToHour(empIdx,cx){
-  // Convert a canvas x pixel into an absolute available-hour offset for this employee
+  // Returns {schedDate,schedHour} — the calendar date and hour-in-day at pixel cx
   const days=getWorkDays();
   const dayAvail=days.map(d=>!isDayBlocked(empIdx,d));
   const dayW=cellW*HPD;
-  let hour=0;
   for(let di=0;di<days.length;di++){
     const dx=LABEL_W+di*dayW;
     if(cx<dx+dayW){
-      if(!dayAvail[di]) break;
-      const hInDay=Math.max(0,Math.floor((cx-dx)/cellW));
-      return hour+Math.min(hInDay,HPD-1);
+      if(!dayAvail[di]){
+        // Blocked — find nearest available day
+        for(let d2=di+1;d2<days.length;d2++){if(dayAvail[d2])return{schedDate:dateStr(days[d2]),schedHour:0};}
+        return{schedDate:dateStr(days[days.length-1]),schedHour:0};
+      }
+      const hInDay=Math.max(0,Math.min(HPD-1,Math.floor((cx-dx)/cellW)));
+      return{schedDate:dateStr(days[di]),schedHour:hInDay};
     }
-    if(dayAvail[di]) hour+=HPD;
   }
-  return hour;
+  // Beyond visible range — last available day
+  for(let di=days.length-1;di>=0;di--){if(dayAvail[di])return{schedDate:dateStr(days[di]),schedHour:0};}
+  return{schedDate:dateStr(days[0]),schedHour:0};
 }
-function clampNoOverlap(empIdx,id,proposedHour,buildHrs){
-  const others=scheduled
-    .filter(s=>s.empIdx===empIdx&&s.id!==id)
-    .sort((a,b)=>(a.startHour||0)-(b.startHour||0));
-  if(!others.length) return Math.max(0,proposedHour);
-
-  // Find a gap that fits buildHrs, starting from the proposed position
-  // Build a list of occupied intervals
-  const intervals=others.map(o=>({s:o.startHour||0,e:(o.startHour||0)+o.buildHrs}));
-
-  // Try proposed hour first — if it fits, use it
-  function fits(h){
-    if(h<0) return false;
-    return intervals.every(iv=>h>=iv.e||h+buildHrs<=iv.s);
+function schedToHourMap(empIdx){
+  // Build a map: "YYYY-MM-DD:h" -> pixel x for this employee's available hours
+  const days=getWorkDays();
+  const dayAvail=days.map(d=>!isDayBlocked(empIdx,d));
+  const dayW=cellW*HPD;
+  const map={};
+  days.forEach((d,di)=>{
+    if(!dayAvail[di])return;
+    for(let h=0;h<HPD;h++){
+      map[dateStr(d)+':'+h]=LABEL_W+di*dayW+h*cellW;
+    }
+  });
+  return map;
+}
+function schedPanelStart(s,empIdx){
+  // Returns pixel x for the start of a scheduled panel, or null if off-screen
+  if(!s.schedDate) return null;
+  const hm=schedToHourMap(empIdx);
+  return hm[s.schedDate+':'+(s.schedHour||0)]??null;
+}
+function schedToAbsHour(s){
+  // Convert a panel's schedDate/schedHour to an absolute hour index (days*8+hour)
+  // using a fixed epoch so different employees are comparable
+  if(!s.schedDate) return (s.startHour||0); // legacy fallback
+  const d=parseDate(s.schedDate);
+  // Count workdays from a fixed reference (2020-01-02, first workday)
+  const ref=new Date(2020,0,2);
+  let days=0,cur=new Date(ref);
+  while(cur<d){cur.setDate(cur.getDate()+1);if(cur.getDay()!==0&&cur.getDay()!==6)days++;}
+  return days*HPD+(s.schedHour||0);
+}
+function absHourToSchedFromDate(startDateStr,offsetHours){
+  // Convert a relative hour offset from a given start date to {schedDate,schedHour}
+  const start=parseDate(startDateStr);
+  let d=new Date(start),avail=0,target=offsetHours;
+  for(let safety=0;safety<5000;safety++){
+    if(d.getDay()!==0&&d.getDay()!==6){
+      if(avail+HPD>target){return{schedDate:dateStr(d),schedHour:target-avail};}
+      avail+=HPD;
+    }
+    d.setDate(d.getDate()+1);
   }
-
-  // Search outward from proposedHour in both directions, hour by hour
+  return{schedDate:startDateStr,schedHour:0};
+}
+function absHourToSched(absHour){
+  // Convert absolute hour back to {schedDate, schedHour}
+  const dayIdx=Math.floor(absHour/HPD);
+  const h=absHour%HPD;
+  const ref=new Date(2020,0,2);
+  let days=0,cur=new Date(ref);
+  while(days<dayIdx){cur.setDate(cur.getDate()+1);if(cur.getDay()!==0&&cur.getDay()!==6)days++;}
+  return{schedDate:dateStr(cur),schedHour:h};
+}
+function clampNoOverlap(empIdx,id,proposed,buildHrs){
+  // proposed = {schedDate,schedHour}
+  const others=scheduled.filter(s=>s.empIdx===empIdx&&s.id!==id);
+  if(!others.length) return proposed;
+  const propAbs=schedToAbsHour({schedDate:proposed.schedDate,schedHour:proposed.schedHour||0});
+  const intervals=others.map(o=>({s:schedToAbsHour(o),e:schedToAbsHour(o)+o.buildHrs}));
+  function fits(h){if(h<0)return false;return intervals.every(iv=>h>=iv.e||h+buildHrs<=iv.s);}
   const MAX=500;
   for(let delta=0;delta<=MAX;delta++){
-    if(fits(proposedHour+delta)) return proposedHour+delta;
-    if(proposedHour-delta>=0&&fits(proposedHour-delta)) return proposedHour-delta;
+    if(fits(propAbs+delta))return absHourToSched(propAbs+delta);
+    if(propAbs-delta>=0&&fits(propAbs-delta))return absHourToSched(propAbs-delta);
   }
-  // Fallback: place after last panel
-  const last=intervals[intervals.length-1];
-  return last.e;
+  const last=intervals.sort((a,b)=>b.e-a.e)[0];
+  return absHourToSched(last.e);
 }
 function orderAtX(empIdx,cx){
   const ep=getByEmp(empIdx),dayAvail=getWorkDays().map(d=>!isDayBlocked(empIdx,d));
@@ -800,14 +850,15 @@ window.addEventListener('mousemove',ev=>{
   const hoverEmp=empAtY(cy);
   if(hoverEmp>=0&&hoverEmp!==s.empIdx){
     // When switching rows, clamp to avoid instant overlap on new row
-    const rawHourNew=pxToHour(hoverEmp,ev.clientX-r.left-(barDrag.grabOffsetPx||0));
-    s.empIdx=hoverEmp;
-    barDrag.empIdx=hoverEmp;
-    s.startHour=clampNoOverlap(hoverEmp,s.id,rawHourNew,s.buildHrs);
+    const rawPosNew=pxToHour(hoverEmp,ev.clientX-r.left-(barDrag.grabOffsetPx||0));
+    s.empIdx=hoverEmp;barDrag.empIdx=hoverEmp;
+    const cn=clampNoOverlap(hoverEmp,s.id,rawPosNew,s.buildHrs);
+    s.schedDate=cn.schedDate;s.schedHour=cn.schedHour||0;
   }
   const targetPx=ev.clientX-r.left-(barDrag.grabOffsetPx||0);
-  const rawHour=pxToHour(s.empIdx,targetPx);
-  s.startHour=clampNoOverlap(s.empIdx,s.id,rawHour,s.buildHrs);
+  const rawPos=pxToHour(s.empIdx,targetPx);
+  const clamped=clampNoOverlap(s.empIdx,s.id,rawPos,s.buildHrs);
+  s.schedDate=clamped.schedDate;s.schedHour=clamped.schedHour||0;
   render();
 });
 window.addEventListener('mouseup',ev=>{
@@ -851,9 +902,9 @@ window.addEventListener('mouseup',ev=>{
   if(ei>=0&&cx>=LABEL_W&&cx<=canvas.width){
     const p=poolDrag.p;
     if(!scheduled.find(s=>s.srcId===p.id)){
-      const rawHour=pxToHour(ei,cx);
-      const startHour=clampNoOverlap(ei,-1,rawHour,p.buildHrs);
-      scheduled.push({id:nextId++,srcId:p.id,empIdx:ei,startHour,name:p.name,job:p.job,customer:p.customer||'',buildHrs:p.buildHrs});
+      const rawPos=pxToHour(ei,cx);
+      const pos=clampNoOverlap(ei,-1,rawPos,p.buildHrs);
+      scheduled.push({id:nextId++,srcId:p.id,empIdx:ei,schedDate:pos.schedDate,schedHour:pos.schedHour||0,name:p.name,job:p.job,customer:p.customer||'',buildHrs:p.buildHrs});
       render();
     }
   }
@@ -1014,14 +1065,18 @@ function confirmBulkAssign(){
   if(!matches.length){alert('No unscheduled panels match.');return;}
   // Start after the last scheduled panel for this employee
   const epPanels=getByEmp(empIdx);
-  let bulkStart=0;
+  let bulkAbsHour=0;
   if(epPanels.length>0){
     const last=epPanels[epPanels.length-1];
-    bulkStart=(last.startHour||0)+last.buildHrs;
+    bulkAbsHour=schedToAbsHour(last)+last.buildHrs;
+  } else {
+    const days=getWorkDays();
+    bulkAbsHour=schedToAbsHour({schedDate:dateStr(days[0]),schedHour:0});
   }
   matches.forEach((p,i)=>{
-    scheduled.push({id:nextId++,srcId:p.id,empIdx,startHour:bulkStart,name:p.name,job:p.job,customer:p.customer||'',buildHrs:p.buildHrs});
-    bulkStart+=p.buildHrs;
+    const bpos=absHourToSched(bulkAbsHour);
+    scheduled.push({id:nextId++,srcId:p.id,empIdx,schedDate:bpos.schedDate,schedHour:bpos.schedHour,name:p.name,job:p.job,customer:p.customer||'',buildHrs:p.buildHrs});
+    bulkAbsHour+=p.buildHrs;
   });
   closeModal('assign-modal');render();
 }
@@ -1076,7 +1131,18 @@ function applyState(st){
   if(st.customerColors)Object.assign(customerColors,st.customerColors);
   if(st.startDate)document.getElementById('ctrl-start').value=st.startDate;
   if(st.weeks)document.getElementById('ctrl-weeks').value=st.weeks;
-  const byEmp={};scheduled.forEach(s=>{if(s.startHour===undefined){if(!byEmp[s.empIdx])byEmp[s.empIdx]=0;s.startHour=byEmp[s.empIdx];byEmp[s.empIdx]+=s.buildHrs;}});
+  // Migrate old startHour-based panels to date-based positioning
+  const startDateStr=document.getElementById('ctrl-start').value||dateStr(nextMonday());
+  const byEmp={};
+  scheduled.forEach(s=>{
+    if(!s.schedDate){
+      const sh=s.startHour!==undefined?s.startHour:(byEmp[s.empIdx]||0);
+      const pos=absHourToSchedFromDate(startDateStr,sh);
+      s.schedDate=pos.schedDate;s.schedHour=pos.schedHour;
+      byEmp[s.empIdx]=(byEmp[s.empIdx]||0)+s.buildHrs;
+      delete s.startHour;
+    }
+  });
   return true;
 }
 document.addEventListener('DOMContentLoaded',function(){
