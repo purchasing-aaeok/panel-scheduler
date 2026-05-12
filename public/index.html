@@ -134,7 +134,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--font-sans);font-si
   </div>
   <div class="body-split">
     <div class="pool-panel">
-      <div class="pool-header">Unscheduled <span class="pool-count" id="pool-count">0</span><button id="collapse-all-btn" onclick="collapseAll()" title="Collapse / expand all" style="margin-left:auto;background:transparent;border:1px solid var(--border2);border-radius:3px;color:var(--muted);font-family:var(--font-mono);font-size:10px;padding:2px 7px;cursor:pointer;white-space:nowrap">&#x22BF; All</button></div>
+      <div class="pool-header">Unscheduled <span class="pool-count" id="pool-count">0</span><button id="collapse-all-btn" onclick="collapseAll()" style="margin-left:auto;background:transparent;border:1px solid var(--border2);border-radius:3px;color:var(--muted);font-family:var(--font-mono);font-size:10px;padding:2px 7px;cursor:pointer">&#x22BF; All</button></div>
       <div class="pool-toolbar">
         <input type="text" id="pool-search" placeholder="Search…" oninput="renderPool()">
 
@@ -486,7 +486,7 @@ function getWorkDays(){
 const canvas=document.getElementById('gantt-canvas');
 const ctx=canvas.getContext('2d');
 let hitRegions=[];
-function getByEmp(ei){return scheduled.filter(s=>s.empIdx===ei).sort((a,b)=>schedToAbsHour(a)-schedToAbsHour(b))}
+function getByEmp(ei){return scheduled.filter(s=>s.empIdx===ei).sort((a,b)=>schedDateToAbsHour(a.schedDate,a.schedHour)-schedDateToAbsHour(b.schedDate,b.schedHour))}
 function roundRect(x,y,w,h,r,fill){
   if(w<0.5)return;
   ctx.beginPath();ctx.moveTo(x+r,y);ctx.lineTo(x+w-r,y);ctx.quadraticCurveTo(x+w,y,x+w,y+r);
@@ -614,22 +614,22 @@ function render(){
     // Draw bars as filled hour cells
     const dayAvail=days.map(d=>!isDayBlocked(ei,d));
     // Build a lookup: available-hour-index → {dayIdx, hourInDay, pixelX}
-    const schedMap=schedToHourMap(ei);
     getByEmp(ei).forEach(s=>{
-      if(!s.schedDate) return;
-      if(schedMap[s.schedDate+':'+(s.schedHour||0)]===undefined) return;
-      // Build ordered list of available hour pixels from this panel's start date/hour
+      // Find start pixel from schedDate
+      const spx=dateHourToPx(ei,s.schedDate,s.schedHour);
+      if(spx===null) return; // off screen
+      let startDi=-1;
+      for(let di2=0;di2<days.length;di2++)if(dateStr(days[di2])===s.schedDate){startDi=di2;break;}
+      if(startDi===-1) return;
+      // Build list of available hour pixels from start
       const iterHours=[];
-      let tdi=-1;
-      for(let di=0;di<days.length;di++){if(dayAvail[di]&&dateStr(days[di])===s.schedDate){tdi=di;break;}}
-      if(tdi===-1) return;
-      let curDi=tdi,curH=s.schedHour||0;
-      while(iterHours.length<s.buildHrs&&curDi<days.length){
-        if(dayAvail[curDi]){iterHours.push({px:LABEL_W+curDi*dayW+curH*cellW});curH++;if(curH>=HPD){curH=0;curDi++;}}
-        else{curDi++;curH=0;}
+      let cdi=startDi,ch=s.schedHour||0;
+      while(iterHours.length<s.buildHrs&&cdi<days.length){
+        if(dayAvail[cdi]){iterHours.push({px:LABEL_W+cdi*dayW+ch*cellW});ch++;if(ch>=HPD){ch=0;cdi++;}}
+        else{cdi++;ch=0;}
       }
       let hi=0;
-      // Walk through hours — PASS 1 — PASS 1: fills and gloss only (no dividers yet)
+      // Walk through hours — PASS 1: fills and gloss only (no dividers yet)
       let remainHrs=s.buildHrs;
       let hi=startHour; // index into hourMap
       let hourInDay=hourMap[hi]?hourMap[hi].h:0;
@@ -671,27 +671,25 @@ function render(){
         if(totalBarW>20){
           const multiLine=totalBarW>cellW*3;
           const fullName=(s.job?s.job+' ':'')+s.name;
+          ctx.font='600 11px IBM Plex Mono,monospace';
+          const availW=hitRight-textX-4;
+          let lbl=fullName;
+          if(ctx.measureText(lbl).width>availW){while(lbl.length>1&&ctx.measureText(lbl+'…').width>availW)lbl=lbl.slice(0,-1);lbl+='…';}
           const textX=hitLeft+6;
           const textY1=BAR_TOP+BAR_H/2+(multiLine?-3:4);
           const textY2=BAR_TOP+BAR_H/2+8;
           ctx.save();
-          // Clip to bar bounds
-          ctx.beginPath();ctx.rect(hitLeft+2,BAR_TOP+1,hitRight-hitLeft-4,BAR_H-2);ctx.clip();
-          // Measure text against available bar width and truncate only if needed
-          ctx.font='600 11px IBM Plex Mono,monospace';ctx.textAlign='left';
-          const availW=hitRight-textX-4;
-          let lbl=fullName;
-          if(ctx.measureText(lbl).width>availW){
-            while(lbl.length>1&&ctx.measureText(lbl+'…').width>availW) lbl=lbl.slice(0,-1);
-            lbl+='…';
-          }
+          // Clip to total bar so text never bleeds outside it
+          ctx.beginPath();ctx.rect(hitLeft+2,BAR_TOP+1,totalBarW-4,BAR_H-2);ctx.clip();
+          // White text with a dark shadow for contrast against any bar colour
+          ctx.textAlign='left';
           ctx.shadowColor='rgba(0,0,0,0.9)';ctx.shadowBlur=0;
           ctx.shadowOffsetX=1;ctx.shadowOffsetY=1;
           ctx.fillStyle='rgba(255,255,255,.95)';
           ctx.fillText(lbl,textX,textY1);
           ctx.shadowOffsetX=0;ctx.shadowOffsetY=0;ctx.shadowBlur=0;
           if(multiLine){
-            ctx.font='400 9px IBM Plex Mono,monospace';
+            ctx.font='400 8px IBM Plex Mono,monospace';
             ctx.fillStyle='rgba(255,255,255,.75)';
             ctx.fillText(s.buildHrs+'h',textX,textY2);
           }
@@ -725,95 +723,74 @@ function renderDashboard(){
 
 function hitTest(cx,cy){for(let i=hitRegions.length-1;i>=0;i--){const r=hitRegions[i];if(cx>=r.x&&cx<=r.x+r.w&&cy>=r.y&&cy<=r.y+r.h)return r;}return null;}
 function empAtY(cy){if(cy<HEADER_H)return -1;const ei=Math.floor((cy-HEADER_H)/ROW_H);return ei>=0&&ei<employees.length?ei:-1;}
+function dateHourToPx(empIdx,schedDate,schedHour){
+  // Convert a calendar date+hour to canvas pixel x, or null if off-screen
+  const days=getWorkDays(),dayW=cellW*HPD;
+  for(let di=0;di<days.length;di++){
+    if(dateStr(days[di])===schedDate&&!isDayBlocked(empIdx,days[di]))
+      return LABEL_W+di*dayW+(schedHour||0)*cellW;
+  }
+  return null;
+}
+function pxToDateHour(empIdx,cx){
+  // Convert canvas px to {schedDate,schedHour}
+  const days=getWorkDays(),dayW=cellW*HPD;
+  for(let di=0;di<days.length;di++){
+    const dx=LABEL_W+di*dayW;
+    if(cx>=dx&&cx<dx+dayW){
+      if(isDayBlocked(empIdx,days[di])) break;
+      return{schedDate:dateStr(days[di]),schedHour:Math.max(0,Math.min(HPD-1,Math.floor((cx-dx)/cellW)))};
+    }
+  }
+  // Default to first available day
+  for(let di=0;di<days.length;di++)if(!isDayBlocked(empIdx,days[di]))return{schedDate:dateStr(days[di]),schedHour:0};
+  return{schedDate:dateStr(days[0]),schedHour:0};
+}
+function schedDateToAbsHour(sd,sh){
+  // Absolute hour count from a fixed epoch for sorting/overlap
+  const d=parseDate(sd),ref=new Date(2020,0,2);
+  let cnt=0,cur=new Date(ref);
+  while(cur<d){cur.setDate(cur.getDate()+1);if(cur.getDay()!==0&&cur.getDay()!==6)cnt++;}
+  return cnt*HPD+(sh||0);
+}
+function absHourToDateHour(abs){
+  const ref=new Date(2020,0,2);
+  let cnt=0,cur=new Date(ref);
+  while(cnt<Math.floor(abs/HPD)){cur.setDate(cur.getDate()+1);if(cur.getDay()!==0&&cur.getDay()!==6)cnt++;}
+  return{schedDate:dateStr(cur),schedHour:abs%HPD};
+}
 function pxToHour(empIdx,cx){
-  // Returns {schedDate,schedHour} — the calendar date and hour-in-day at pixel cx
+  // Convert a canvas x pixel into an absolute available-hour offset for this employee
   const days=getWorkDays();
   const dayAvail=days.map(d=>!isDayBlocked(empIdx,d));
   const dayW=cellW*HPD;
+  let hour=0;
   for(let di=0;di<days.length;di++){
     const dx=LABEL_W+di*dayW;
     if(cx<dx+dayW){
-      if(!dayAvail[di]){
-        // Blocked — find nearest available day
-        for(let d2=di+1;d2<days.length;d2++){if(dayAvail[d2])return{schedDate:dateStr(days[d2]),schedHour:0};}
-        return{schedDate:dateStr(days[days.length-1]),schedHour:0};
-      }
-      const hInDay=Math.max(0,Math.min(HPD-1,Math.floor((cx-dx)/cellW)));
-      return{schedDate:dateStr(days[di]),schedHour:hInDay};
+      if(!dayAvail[di]) break;
+      const hInDay=Math.max(0,Math.floor((cx-dx)/cellW));
+      return hour+Math.min(hInDay,HPD-1);
     }
+    if(dayAvail[di]) hour+=HPD;
   }
-  // Beyond visible range — last available day
-  for(let di=days.length-1;di>=0;di--){if(dayAvail[di])return{schedDate:dateStr(days[di]),schedHour:0};}
-  return{schedDate:dateStr(days[0]),schedHour:0};
-}
-function schedToHourMap(empIdx){
-  // Build a map: "YYYY-MM-DD:h" -> pixel x for this employee's available hours
-  const days=getWorkDays();
-  const dayAvail=days.map(d=>!isDayBlocked(empIdx,d));
-  const dayW=cellW*HPD;
-  const map={};
-  days.forEach((d,di)=>{
-    if(!dayAvail[di])return;
-    for(let h=0;h<HPD;h++){
-      map[dateStr(d)+':'+h]=LABEL_W+di*dayW+h*cellW;
-    }
-  });
-  return map;
-}
-function schedPanelStart(s,empIdx){
-  // Returns pixel x for the start of a scheduled panel, or null if off-screen
-  if(!s.schedDate) return null;
-  const hm=schedToHourMap(empIdx);
-  return hm[s.schedDate+':'+(s.schedHour||0)]??null;
-}
-function schedToAbsHour(s){
-  // Convert a panel's schedDate/schedHour to an absolute hour index (days*8+hour)
-  // using a fixed epoch so different employees are comparable
-  if(!s.schedDate) return (s.startHour||0); // legacy fallback
-  const d=parseDate(s.schedDate);
-  // Count workdays from a fixed reference (2020-01-02, first workday)
-  const ref=new Date(2020,0,2);
-  let days=0,cur=new Date(ref);
-  while(cur<d){cur.setDate(cur.getDate()+1);if(cur.getDay()!==0&&cur.getDay()!==6)days++;}
-  return days*HPD+(s.schedHour||0);
-}
-function absHourToSchedFromDate(startDateStr,offsetHours){
-  // Convert a relative hour offset from a given start date to {schedDate,schedHour}
-  const start=parseDate(startDateStr);
-  let d=new Date(start),avail=0,target=offsetHours;
-  for(let safety=0;safety<5000;safety++){
-    if(d.getDay()!==0&&d.getDay()!==6){
-      if(avail+HPD>target){return{schedDate:dateStr(d),schedHour:target-avail};}
-      avail+=HPD;
-    }
-    d.setDate(d.getDate()+1);
-  }
-  return{schedDate:startDateStr,schedHour:0};
-}
-function absHourToSched(absHour){
-  // Convert absolute hour back to {schedDate, schedHour}
-  const dayIdx=Math.floor(absHour/HPD);
-  const h=absHour%HPD;
-  const ref=new Date(2020,0,2);
-  let days=0,cur=new Date(ref);
-  while(days<dayIdx){cur.setDate(cur.getDate()+1);if(cur.getDay()!==0&&cur.getDay()!==6)days++;}
-  return{schedDate:dateStr(cur),schedHour:h};
+  return hour;
 }
 function clampNoOverlap(empIdx,id,proposed,buildHrs){
-  // proposed = {schedDate,schedHour}
+  // proposed = {schedDate,schedHour} OR a legacy number
+  if(typeof proposed==='number')proposed=absHourToDateHour(proposed);
   const others=scheduled.filter(s=>s.empIdx===empIdx&&s.id!==id);
-  if(!others.length) return proposed;
-  const propAbs=schedToAbsHour({schedDate:proposed.schedDate,schedHour:proposed.schedHour||0});
-  const intervals=others.map(o=>({s:schedToAbsHour(o),e:schedToAbsHour(o)+o.buildHrs}));
-  function fits(h){if(h<0)return false;return intervals.every(iv=>h>=iv.e||h+buildHrs<=iv.s);}
-  const MAX=500;
-  for(let delta=0;delta<=MAX;delta++){
-    if(fits(propAbs+delta))return absHourToSched(propAbs+delta);
-    if(propAbs-delta>=0&&fits(propAbs-delta))return absHourToSched(propAbs-delta);
+  if(!others.length)return proposed;
+  const propAbs=schedDateToAbsHour(proposed.schedDate,proposed.schedHour);
+  const intervals=others.map(o=>({s:schedDateToAbsHour(o.schedDate,o.schedHour),e:schedDateToAbsHour(o.schedDate,o.schedHour)+o.buildHrs}));
+  function fits(h){return h>=0&&intervals.every(iv=>h>=iv.e||h+buildHrs<=iv.s);}
+  for(let d=0;d<=500;d++){
+    if(fits(propAbs+d))return absHourToDateHour(propAbs+d);
+    if(propAbs-d>=0&&fits(propAbs-d))return absHourToDateHour(propAbs-d);
   }
-  const last=intervals.sort((a,b)=>b.e-a.e)[0];
-  return absHourToSched(last.e);
+  return absHourToDateHour(Math.max(...intervals.map(iv=>iv.e)));
 }
+
 function orderAtX(empIdx,cx){
   const ep=getByEmp(empIdx),dayAvail=getWorkDays().map(d=>!isDayBlocked(empIdx,d));
   const dayW=cellW*HPD;
@@ -850,15 +827,15 @@ window.addEventListener('mousemove',ev=>{
   const hoverEmp=empAtY(cy);
   if(hoverEmp>=0&&hoverEmp!==s.empIdx){
     // When switching rows, clamp to avoid instant overlap on new row
-    const rawPosNew=pxToHour(hoverEmp,ev.clientX-r.left-(barDrag.grabOffsetPx||0));
-    s.empIdx=hoverEmp;barDrag.empIdx=hoverEmp;
-    const cn=clampNoOverlap(hoverEmp,s.id,rawPosNew,s.buildHrs);
-    s.schedDate=cn.schedDate;s.schedHour=cn.schedHour||0;
+    const rawHourNew=pxToHour(hoverEmp,ev.clientX-r.left-(barDrag.grabOffsetPx||0));
+    s.empIdx=hoverEmp;
+    barDrag.empIdx=hoverEmp;
+    s.startHour=clampNoOverlap(hoverEmp,s.id,rawHourNew,s.buildHrs);
   }
   const targetPx=ev.clientX-r.left-(barDrag.grabOffsetPx||0);
-  const rawPos=pxToHour(s.empIdx,targetPx);
-  const clamped=clampNoOverlap(s.empIdx,s.id,rawPos,s.buildHrs);
-  s.schedDate=clamped.schedDate;s.schedHour=clamped.schedHour||0;
+  const raw=pxToDateHour(s.empIdx,targetPx);
+  const np=clampNoOverlap(s.empIdx,s.id,raw,s.buildHrs);
+  s.schedDate=np.schedDate;s.schedHour=np.schedHour;
   render();
 });
 window.addEventListener('mouseup',ev=>{
@@ -872,7 +849,7 @@ const tooltip=document.getElementById('tooltip');
 canvas.addEventListener('mousemove',ev=>{
   if(barDrag){tooltip.style.display='none';return;}
   const r=canvas.getBoundingClientRect(),hit=hitTest(ev.clientX-r.left,ev.clientY-r.top);
-  if(hit){const s=scheduled.find(x=>x.id===hit.id);if(s){tooltip.innerHTML='<b>'+(s.job?esc(s.job)+' ':'')+esc(s.name)+'</b><br>Customer: '+esc(s.customer||'\u2014')+'<br>Job: '+esc(s.job)+'<br>Build: '+s.buildHrs+'h';tooltip.style.display='block';tooltip.style.left=(ev.clientX+14)+'px';tooltip.style.top=(ev.clientY-8)+'px';canvas.style.cursor='grab';return;}}
+  if(hit){const s=scheduled.find(x=>x.id===hit.id);if(s){tooltip.innerHTML='<b>'+esc(s.name)+'</b><br>Customer: '+esc(s.customer||'\u2014')+'<br>Job: '+esc(s.job)+'<br>Build: '+s.buildHrs+'h';tooltip.style.display='block';tooltip.style.left=(ev.clientX+14)+'px';tooltip.style.top=(ev.clientY-8)+'px';canvas.style.cursor='grab';return;}}
   tooltip.style.display='none';canvas.style.cursor='default';
 });
 canvas.addEventListener('mouseleave',()=>{tooltip.style.display='none';});
@@ -902,9 +879,9 @@ window.addEventListener('mouseup',ev=>{
   if(ei>=0&&cx>=LABEL_W&&cx<=canvas.width){
     const p=poolDrag.p;
     if(!scheduled.find(s=>s.srcId===p.id)){
-      const rawPos=pxToHour(ei,cx);
-      const pos=clampNoOverlap(ei,-1,rawPos,p.buildHrs);
-      scheduled.push({id:nextId++,srcId:p.id,empIdx:ei,schedDate:pos.schedDate,schedHour:pos.schedHour||0,name:p.name,job:p.job,customer:p.customer||'',buildHrs:p.buildHrs});
+      const raw=pxToDateHour(ei,cx);
+      const pos=clampNoOverlap(ei,-1,raw,p.buildHrs);
+      scheduled.push({id:nextId++,srcId:p.id,empIdx:ei,schedDate:pos.schedDate,schedHour:pos.schedHour,name:p.name,job:p.job,customer:p.customer||'',buildHrs:p.buildHrs});
       render();
     }
   }
@@ -915,20 +892,16 @@ const collapseState={};
 function toggleCollapse(key){collapseState[key]=!collapseState[key];renderPool();}
 function isCollapsed(key){return collapseState[key]===true;}
 function collapseAll(){
-  // Build list of all customer and job keys currently visible
   const keys=[];
   pool.forEach(p=>{
-    if(deletedPoolIds.has(p.id)||scheduled.find(s=>s.srcId===p.id)) return;
-    const ck='c:'+(p.customer||'Unknown');
-    if(!keys.includes(ck)) keys.push(ck);
-    const jk='j:'+(p.customer||'Unknown')+':'+(p.job||'');
-    if(!keys.includes(jk)) keys.push(jk);
+    if(deletedPoolIds.has(p.id)||scheduled.find(s=>s.srcId===p.id))return;
+    const ck='c:'+(p.customer||'Unknown');if(!keys.includes(ck))keys.push(ck);
+    const jk='j:'+(p.customer||'Unknown')+':'+(p.job||'');if(!keys.includes(jk))keys.push(jk);
   });
-  // If everything is collapsed, expand all; otherwise collapse all
   const allCollapsed=keys.every(k=>collapseState[k]===true);
   keys.forEach(k=>{collapseState[k]=!allCollapsed;});
   const btn=document.getElementById('collapse-all-btn');
-  if(btn) btn.innerHTML=allCollapsed?'&#x22BF; All':'&#x22BE; All';
+  if(btn)btn.innerHTML=allCollapsed?'&#x22BF; All':'&#x22BE; All';
   renderPool();
 }
 
@@ -1065,18 +1038,14 @@ function confirmBulkAssign(){
   if(!matches.length){alert('No unscheduled panels match.');return;}
   // Start after the last scheduled panel for this employee
   const epPanels=getByEmp(empIdx);
-  let bulkAbsHour=0;
+  let bulkStart=0;
   if(epPanels.length>0){
     const last=epPanels[epPanels.length-1];
-    bulkAbsHour=schedToAbsHour(last)+last.buildHrs;
-  } else {
-    const days=getWorkDays();
-    bulkAbsHour=schedToAbsHour({schedDate:dateStr(days[0]),schedHour:0});
+    bulkStart=(last.startHour||0)+last.buildHrs;
   }
   matches.forEach((p,i)=>{
-    const bpos=absHourToSched(bulkAbsHour);
-    scheduled.push({id:nextId++,srcId:p.id,empIdx,schedDate:bpos.schedDate,schedHour:bpos.schedHour,name:p.name,job:p.job,customer:p.customer||'',buildHrs:p.buildHrs});
-    bulkAbsHour+=p.buildHrs;
+    scheduled.push({id:nextId++,srcId:p.id,empIdx,startHour:bulkStart,name:p.name,job:p.job,customer:p.customer||'',buildHrs:p.buildHrs});
+    bulkStart+=p.buildHrs;
   });
   closeModal('assign-modal');render();
 }
@@ -1120,25 +1089,29 @@ function closeModal(id){document.getElementById(id).classList.remove('open');}
 document.querySelectorAll('.modal-bg').forEach(bg=>bg.addEventListener('mousedown',ev=>{if(ev.target===bg)bg.classList.remove('open');}));
 function saveHTML(){
   const state={employees,scheduled,nextId,cellW,blockedDates,blockedRecur,deletedPoolIds:Array.from(deletedPoolIds),customerColors,startDate:document.getElementById('ctrl-start').value,weeks:document.getElementById('ctrl-weeks').value};
-  fetch('/api/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(state)}).then(r=>r.json()).then(d=>{if(d.ok){const btn=document.querySelector('button.primary');const orig=btn.innerHTML;btn.innerHTML='\u2713 Saved';btn.style.background='#00d4aa';setTimeout(()=>{btn.innerHTML=orig;btn.style.background='';},1800);}else{alert('Save failed: '+d.error);}}).catch(e=>alert('Save failed: '+e.message));
+  fetch('/api/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(state)}).then(r=>r.json()).then(d=>{if(d.ok){const btn=document.querySelector('button.primary');const orig=btn.innerHTML;btn.innerHTML='✓ Saved';btn.style.background='#00d4aa';setTimeout(()=>{btn.innerHTML=orig;btn.style.background='';},1800);}else{alert('Save failed: '+d.error);}}).catch(e=>alert('Save failed: '+e.message));
 }
 
 function applyState(st){
   if(!st)return false;
-  employees=st.employees||employees;scheduled=st.scheduled||[];nextId=st.nextId||nextId;
-  cellW=(st.cellW&&st.cellW<=40)?st.cellW:14;blockedDates=st.blockedDates||[];blockedRecur=st.blockedRecur||[];
+  employees=st.employees||employees;
+  scheduled=st.scheduled||[];
+  nextId=st.nextId||nextId;
+  cellW=(st.cellW&&st.cellW<=40)?st.cellW:14;
+  blockedDates=st.blockedDates||[];
+  blockedRecur=st.blockedRecur||[];
   deletedPoolIds=new Set(st.deletedPoolIds||[]);
   if(st.customerColors)Object.assign(customerColors,st.customerColors);
   if(st.startDate)document.getElementById('ctrl-start').value=st.startDate;
   if(st.weeks)document.getElementById('ctrl-weeks').value=st.weeks;
-  // Migrate old startHour-based panels to date-based positioning
-  const startDateStr=document.getElementById('ctrl-start').value||dateStr(nextMonday());
+  // Migrate old startHour-based panels
+  const viewStart=document.getElementById('ctrl-start').value||dateStr(nextMonday());
   const byEmp={};
   scheduled.forEach(s=>{
     if(!s.schedDate){
-      const sh=s.startHour!==undefined?s.startHour:(byEmp[s.empIdx]||0);
-      const pos=absHourToSchedFromDate(startDateStr,sh);
-      s.schedDate=pos.schedDate;s.schedHour=pos.schedHour;
+      const h=s.startHour!==undefined?s.startHour:(byEmp[s.empIdx]||0);
+      s.schedDate=viewStart;
+      s.schedHour=Math.min(h%HPD,HPD-1);
       byEmp[s.empIdx]=(byEmp[s.empIdx]||0)+s.buildHrs;
       delete s.startHour;
     }
@@ -1147,7 +1120,10 @@ function applyState(st){
 }
 document.addEventListener('DOMContentLoaded',function(){
   document.getElementById('ctrl-start').value=dateStr(nextMonday());
-  Promise.all([fetch('/api/panels').then(r=>r.json()).catch(()=>({ok:false,panels:[]})),fetch('/api/load').then(r=>r.json()).catch(()=>({ok:false,state:null}))]).then(([pd,sd])=>{
+  Promise.all([
+    fetch('/api/panels').then(r=>r.json()).catch(()=>({ok:false,panels:[]})),
+    fetch('/api/load').then(r=>r.json()).catch(()=>({ok:false,state:null}))
+  ]).then(([pd,sd])=>{
     if(pd.ok&&pd.panels.length){pool=pd.panels;nextId=pool.length+1;pool.forEach(p=>colorForCustomer(p.customer||''));}
     if(sd.ok&&sd.state){applyState(sd.state);}
     render();
