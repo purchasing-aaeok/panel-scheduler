@@ -158,8 +158,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--font-sans);font-si
           <button class="zoom-btn" onclick="zoom(2)">+</button>
         </div>
       </div>
-      <div id="dashboard" class="dashboard"><div class="dash-cell wide warn">
-    <div class="dash-label">Unscheduled</div>
+      <div id="dashboard" class="dashboard"></div>
     <div class="dash-value warn">3,653h</div>
     <div class="dash-sub">372 panels · 3% scheduled</div>
     <div class="dash-bar-wrap"><div class="dash-bar-fill" style="width:3%;background:#ff7a45"></div></div>
@@ -522,449 +521,55 @@ function renderDashboard(){
   const dash=document.getElementById('dashboard');
   if(!dash) return;
 
-  // ── Unscheduled hours ──────────────────────────────────────────────────────
+  // Total unscheduled
   const unschedPanels=pool.filter(p=>!deletedPoolIds.has(p.id)&&!scheduled.find(s=>s.srcId===p.id));
   const unschedHrs=unschedPanels.reduce((a,p)=>a+p.buildHrs,0);
   const totalHrs=pool.filter(p=>!deletedPoolIds.has(p.id)).reduce((a,p)=>a+p.buildHrs,0);
   const schedHrs=totalHrs-unschedHrs;
   const schedPct=totalHrs>0?Math.round(schedHrs/totalHrs*100):0;
 
-  // ── Available capacity ─────────────────────────────────────────────────────
-  // Count available (non-blocked) work days per employee in the visible window
-  const days=getWorkDays();
-  const weeks=parseInt(document.getElementById('ctrl-weeks').value)||6;
-  const HPW=employees.length*5*8; // max hours per week across all employees (ignoring blocked)
-
-  // Per week: available hours = employees * 5days * 8hrs - blocked days
-  // Build week buckets
-  const weekBuckets=[];
-  for(let w=0;w<weeks;w++){
-    const wDays=days.slice(w*5,w*5+5);
-    let avail=0;
-    employees.forEach((_,ei)=>{
-      wDays.forEach(d=>{if(!isDayBlocked(ei,d))avail+=8;});
-    });
-    // Scheduled hours that fall in this week
-    let used=0;
-    scheduled.forEach(s=>{
-      const sh=s.startHour||0;
-      const eh=sh+s.buildHrs;
-      // Map available-hour indices to calendar days for this employee
-      // Approximate: count how many hours of this panel overlap with this week's available slots
-      const empDays=getWorkDays();
-      const empAvail=empDays.map(d=>!isDayBlocked(s.empIdx,d));
-      let hIdx=0;
-      empDays.forEach((d,di)=>{
-        if(!empAvail[di]) return;
-        for(let h=0;h<8;h++){
-          if(hIdx>=sh&&hIdx<eh){
-            // check if this day is in this week bucket
-            const dayOffset=days.indexOf(d);
-            if(dayOffset>=w*5&&dayOffset<w*5+5) used+=1;
-          }
-          hIdx++;
-        }
-      });
-    });
-    weekBuckets.push({w,avail,used,free:avail-used,d0:wDays[0],d4:wDays[wDays.length-1]});
-  }
-
-  // Month buckets (group weeks by month)
-  const monthMap={};
-  weekBuckets.forEach(wb=>{
-    if(!wb.d0) return;
-    const mk=wb.d0.getFullYear()+'-'+(wb.d0.getMonth()+1);
-    if(!monthMap[mk]){
-      const mn=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-      monthMap[mk]={label:mn[wb.d0.getMonth()]+' '+wb.d0.getFullYear(),avail:0,used:0};
-    }
-    monthMap[mk].avail+=wb.avail;
-    monthMap[mk].used+=wb.used;
+  // Per-customer unscheduled hours
+  const custMap={};
+  unschedPanels.forEach(p=>{
+    const cust=p.customer||'Unknown';
+    if(!custMap[cust]) custMap[cust]=0;
+    custMap[cust]+=p.buildHrs;
   });
 
   let html='';
 
-  // Unscheduled block
-  const warnClass=unschedHrs>0?'warn':'';
-  html+=`<div class="dash-cell wide ${unschedHrs>0?'warn':'accent'}">
-    <div class="dash-label">Unscheduled</div>
-    <div class="dash-value ${unschedHrs>0?'warn':'green'}">${unschedHrs.toLocaleString()}h</div>
-    <div class="dash-sub">${unschedPanels.length} panels &middot; ${schedPct}% scheduled</div>
-    <div class="dash-bar-wrap"><div class="dash-bar-fill" style="width:${schedPct}%;background:${unschedHrs>0?'#ff7a45':'#00d4aa'}"></div></div>
-  </div>`;
+  // Total unscheduled cell
+  html+='<div class="dash-cell wide '+(unschedHrs>0?'warn':'accent')+'">'
+    +'<div class="dash-label">Unscheduled</div>'
+    +'<div class="dash-value '+(unschedHrs>0?'warn':'green')+'">'+unschedHrs.toLocaleString()+'h</div>'
+    +'<div class="dash-sub">'+unschedPanels.length+' panels &middot; '+schedPct+'% scheduled</div>'
+    +'<div class="dash-bar-wrap"><div class="dash-bar-fill" style="width:'+schedPct+'%;background:'+(unschedHrs>0?'#ff7a45':'#00d4aa')+'"></div></div>'
+    +'</div>';
 
-  // Divider label
-  html+='<div class="dash-cell" style="min-width:60px;background:var(--bg);justify-content:center;align-items:center"><div class="dash-label" style="writing-mode:vertical-rl;transform:rotate(180deg);letter-spacing:.12em">WEEKLY</div></div>';
+  // Divider
+  html+='<div class="dash-cell" style="min-width:50px;background:var(--bg);justify-content:center;align-items:center"><div class="dash-label" style="writing-mode:vertical-rl;transform:rotate(180deg)">BY CUSTOMER</div></div>';
 
-  // Per-week capacity
-  weekBuckets.forEach(wb=>{
-    if(!wb.d0) return;
-    const freePct=wb.avail>0?Math.round(wb.free/wb.avail*100):0;
-    const usedPct=100-freePct;
-    const mn=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-    const label=mn[wb.d0.getMonth()]+' '+wb.d0.getDate();
-    html+=`<div class="dash-cell">
-      <div class="dash-label">${label}</div>
-      <div class="dash-value blue">${wb.free}h free</div>
-      <div class="dash-sub">${wb.used}h used / ${wb.avail}h total</div>
-      <div class="dash-bar-wrap"><div class="dash-bar-fill" style="width:${usedPct}%;background:#4a9eff"></div></div>
-    </div>`;
-  });
-
-  // Monthly summary
-  html+='<div class="dash-cell" style="min-width:60px;background:var(--bg);justify-content:center;align-items:center"><div class="dash-label" style="writing-mode:vertical-rl;transform:rotate(180deg);letter-spacing:.12em">MONTHLY</div></div>';
-  Object.values(monthMap).forEach(m=>{
-    const freePct=m.avail>0?Math.round((m.avail-m.used)/m.avail*100):0;
-    const usedPct=100-freePct;
-    html+=`<div class="dash-cell wide">
-      <div class="dash-label">${m.label}</div>
-      <div class="dash-value green">${m.avail-m.used}h free</div>
-      <div class="dash-sub">${m.used}h used / ${m.avail}h total</div>
-      <div class="dash-bar-wrap"><div class="dash-bar-fill" style="width:${usedPct}%;background:#00d4aa"></div></div>
-    </div>`;
-  });
+  // Per-customer cells, sorted by unscheduled hours descending
+  Object.entries(custMap)
+    .sort((a,b)=>b[1]-a[1])
+    .forEach(([cust,hrs])=>{
+      const col=colorForCustomer(cust);
+      const totalCustHrs=pool.filter(p=>!deletedPoolIds.has(p.id)&&(p.customer||'Unknown')===cust).reduce((a,p)=>a+p.buildHrs,0);
+      const custSchedHrs=totalCustHrs-hrs;
+      const custPct=totalCustHrs>0?Math.round(custSchedHrs/totalCustHrs*100):0;
+      html+='<div class="dash-cell">'
+        +'<div class="dash-label" style="display:flex;align-items:center;gap:5px">'
+        +'<span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:'+col+';flex-shrink:0"></span>'
+        +esc(cust)+'</div>'
+        +'<div class="dash-value" style="color:'+col+'">'+hrs.toLocaleString()+'h</div>'
+        +'<div class="dash-sub">'+custPct+'% scheduled</div>'
+        +'<div class="dash-bar-wrap"><div class="dash-bar-fill" style="width:'+custPct+'%;background:'+col+'"></div></div>'
+        +'</div>';
+    });
 
   dash.innerHTML=html;
 }
-function hitTest(cx,cy){for(let i=hitRegions.length-1;i>=0;i--){const r=hitRegions[i];if(cx>=r.x&&cx<=r.x+r.w&&cy>=r.y&&cy<=r.y+r.h)return r;}return null;}
-function empAtY(cy){if(cy<HEADER_H)return -1;const ei=Math.floor((cy-HEADER_H)/ROW_H);return ei>=0&&ei<employees.length?ei:-1;}
-function pxToHour(empIdx,cx){
-  // Convert a canvas x pixel into an absolute available-hour offset for this employee
-  const days=getWorkDays();
-  const dayAvail=days.map(d=>!isDayBlocked(empIdx,d));
-  const dayW=cellW*HPD;
-  let hour=0;
-  for(let di=0;di<days.length;di++){
-    const dx=LABEL_W+di*dayW;
-    if(cx<dx+dayW){
-      if(!dayAvail[di]) break;
-      const hInDay=Math.max(0,Math.floor((cx-dx)/cellW));
-      return hour+Math.min(hInDay,HPD-1);
-    }
-    if(dayAvail[di]) hour+=HPD;
-  }
-  return hour;
-}
-function clampNoOverlap(empIdx,id,proposedHour,buildHrs){
-  const others=scheduled
-    .filter(s=>s.empIdx===empIdx&&s.id!==id)
-    .sort((a,b)=>(a.startHour||0)-(b.startHour||0));
-  if(!others.length) return Math.max(0,proposedHour);
 
-  // Find a gap that fits buildHrs, starting from the proposed position
-  // Build a list of occupied intervals
-  const intervals=others.map(o=>({s:o.startHour||0,e:(o.startHour||0)+o.buildHrs}));
-
-  // Try proposed hour first — if it fits, use it
-  function fits(h){
-    if(h<0) return false;
-    return intervals.every(iv=>h>=iv.e||h+buildHrs<=iv.s);
-  }
-
-  // Search outward from proposedHour in both directions, hour by hour
-  const MAX=500;
-  for(let delta=0;delta<=MAX;delta++){
-    if(fits(proposedHour+delta)) return proposedHour+delta;
-    if(proposedHour-delta>=0&&fits(proposedHour-delta)) return proposedHour-delta;
-  }
-  // Fallback: place after last panel
-  const last=intervals[intervals.length-1];
-  return last.e;
-}
-function orderAtX(empIdx,cx){
-  const ep=getByEmp(empIdx),dayAvail=getWorkDays().map(d=>!isDayBlocked(empIdx,d));
-  const dayW=cellW*HPD;
-  let availDayIdx=0,insertOrder=0;
-  ep.forEach(s=>{
-    let avSeen=0,sp=null;
-    const days=getWorkDays();
-    for(let di=0;di<days.length;di++){if(avSeen===availDayIdx){sp=LABEL_W+di*dayW;break;}if(dayAvail[di])avSeen++;}
-    if(sp===null)sp=LABEL_W+getWorkDays().length*dayW;
-    const bw=s.buildHrs*cellW;
-    if(cx>sp+bw/2)insertOrder=s.order+1;
-    availDayIdx+=Math.ceil(s.buildHrs/HPD);
-  });
-  return insertOrder;
-}
-let barDrag=null,barDidMove=false;
-canvas.addEventListener('mousedown',ev=>{
-  if(ev.button!==0)return;
-  const r=canvas.getBoundingClientRect(),hit=hitTest(ev.clientX-r.left,ev.clientY-r.top);
-  if(!hit)return;
-  const grabOffsetPx=(ev.clientX-r.left)-hit.x;
-  barDrag={id:hit.id,empIdx:hit.empIdx,origEmpIdx:hit.empIdx,grabOffsetPx,startClientX:ev.clientX};
-  barDidMove=false;ev.preventDefault();
-});
-window.addEventListener('mousemove',ev=>{
-  if(!barDrag)return;
-  if(!barDrag.moved&&Math.abs(ev.clientX-(barDrag.startClientX||ev.clientX))>4)barDrag.moved=true;
-  barDidMove=barDrag.moved;
-  if(!barDrag.moved)return;
-  const s=scheduled.find(x=>x.id===barDrag.id);if(!s)return;
-  const r=canvas.getBoundingClientRect();
-  const cy=ev.clientY-r.top;
-  // Allow moving to a different employee row
-  const hoverEmp=empAtY(cy);
-  if(hoverEmp>=0&&hoverEmp!==s.empIdx){
-    // When switching rows, clamp to avoid instant overlap on new row
-    const rawHourNew=pxToHour(hoverEmp,ev.clientX-r.left-(barDrag.grabOffsetPx||0));
-    s.empIdx=hoverEmp;
-    barDrag.empIdx=hoverEmp;
-    s.startHour=clampNoOverlap(hoverEmp,s.id,rawHourNew,s.buildHrs);
-  }
-  const targetPx=ev.clientX-r.left-(barDrag.grabOffsetPx||0);
-  const rawHour=pxToHour(s.empIdx,targetPx);
-  s.startHour=clampNoOverlap(s.empIdx,s.id,rawHour,s.buildHrs);
-  render();
-});
-window.addEventListener('mouseup',ev=>{
-  if(!barDrag)return;
-  const id=barDrag.id,moved=barDidMove;
-  barDrag=null;barDidMove=false;
-  if(!moved)openEditModal(id);
-  else render(); // re-render to clear any hover highlight
-});
-const tooltip=document.getElementById('tooltip');
-canvas.addEventListener('mousemove',ev=>{
-  if(barDrag){tooltip.style.display='none';return;}
-  const r=canvas.getBoundingClientRect(),hit=hitTest(ev.clientX-r.left,ev.clientY-r.top);
-  if(hit){const s=scheduled.find(x=>x.id===hit.id);if(s){tooltip.innerHTML='<b>'+esc(s.name)+'</b><br>Customer: '+esc(s.customer||'\u2014')+'<br>Job: '+esc(s.job)+'<br>Build: '+s.buildHrs+'h';tooltip.style.display='block';tooltip.style.left=(ev.clientX+14)+'px';tooltip.style.top=(ev.clientY-8)+'px';canvas.style.cursor='grab';return;}}
-  tooltip.style.display='none';canvas.style.cursor='default';
-});
-canvas.addEventListener('mouseleave',()=>{tooltip.style.display='none';});
-let poolDrag=null;
-const ghost=document.getElementById('ghost-label');
-document.getElementById('pool-list').addEventListener('mousedown',ev=>{
-  if(ev.button!==0)return;
-  const card=ev.target.closest('.pool-card');if(!card)return;
-  if(ev.target.closest('.pool-card-del'))return;
-  if(ev.target.classList.contains('pool-card-name-input'))return;
-  const id=parseInt(card.dataset.id),p=pool.find(x=>x.id===id);if(!p)return;
-  poolDrag={id,p,card};card.classList.add('dragging');
-  ghost.textContent=p.name;ghost.style.display='block';ghost.style.left=ev.clientX+'px';ghost.style.top=ev.clientY+'px';
-  ev.preventDefault();
-});
-window.addEventListener('mousemove',ev=>{
-  if(!poolDrag)return;
-  ghost.style.left=ev.clientX+'px';ghost.style.top=ev.clientY+'px';
-  const r=canvas.getBoundingClientRect(),cx=ev.clientX-r.left,cy=ev.clientY-r.top;
-  canvas.style.cursor=(empAtY(cy)>=0&&cx>=LABEL_W)?'copy':'default';
-});
-window.addEventListener('mouseup',ev=>{
-  if(!poolDrag)return;
-  poolDrag.card.classList.remove('dragging');ghost.style.display='none';
-  const r=canvas.getBoundingClientRect(),cx=ev.clientX-r.left,cy=ev.clientY-r.top;
-  const ei=empAtY(cy);
-  if(ei>=0&&cx>=LABEL_W&&cx<=canvas.width){
-    const p=poolDrag.p;
-    if(!scheduled.find(s=>s.srcId===p.id)){
-      const rawHour=pxToHour(ei,cx);
-      const startHour=clampNoOverlap(ei,-1,rawHour,p.buildHrs);
-      scheduled.push({id:nextId++,srcId:p.id,empIdx:ei,startHour,name:p.name,job:p.job,customer:p.customer||'',buildHrs:p.buildHrs});
-      render();
-    }
-  }
-  poolDrag=null;canvas.style.cursor='default';
-});
-// collapse state: 'cust:jobkey' -> bool (true=collapsed)
-const collapseState={};
-function toggleCollapse(key){collapseState[key]=!collapseState[key];renderPool();}
-function isCollapsed(key){return collapseState[key]===true;}
-function collapseAll(){
-  // Toggle: if anything is expanded, collapse all; if all collapsed, expand all
-  const keys=[];
-  pool.forEach(p=>{
-    if(!p.customer) return;
-    const ck='c:'+p.customer;
-    if(!keys.includes(ck)) keys.push(ck);
-    const jk='j:'+p.customer+':'+p.job;
-    if(!keys.includes(jk)) keys.push(jk);
-  });
-  const allCollapsed=keys.every(k=>collapseState[k]===true);
-  keys.forEach(k=>{ collapseState[k]=!allCollapsed; });
-  const btn=document.getElementById('collapse-btn');
-  if(btn) btn.textContent=allCollapsed?'⊟ All':'⊞ All';
-  renderPool();
-}
-
-function renderPool(){
-  const list=document.getElementById('pool-list');
-  const q=(document.getElementById('pool-search').value||'').toLowerCase();
-  const vis=pool.filter(p=>
-    !deletedPoolIds.has(p.id)&&
-    !scheduled.find(s=>s.srcId===p.id)&&
-    (p.name.toLowerCase().includes(q)||p.job.includes(q)||(p.customer||'').toLowerCase().includes(q))
-  );
-  document.getElementById('pool-count').textContent=vis.length;
-  list.innerHTML='';
-
-  // Build: customer -> job -> [panels]
-  const custMap={};
-  vis.forEach(p=>{
-    const cust=p.customer||'Unknown';
-    const job=p.job||'—';
-    if(!custMap[cust])custMap[cust]={};
-    if(!custMap[cust][job])custMap[cust][job]=[];
-    custMap[cust][job].push(p);
-  });
-
-  Object.keys(custMap).sort().forEach(cust=>{
-    const custKey='c:'+cust;
-    const custCollapsed=isCollapsed(custKey);
-    const custColor=colorForCustomer(cust);
-    const totalCount=Object.values(custMap[cust]).reduce((a,arr)=>a+arr.length,0);
-
-    const custDiv=document.createElement('div');
-    custDiv.className='customer-group';
-
-    // Customer header row
-    const custHdr=document.createElement('div');
-    custHdr.className='customer-header';
-    custHdr.innerHTML=
-      '<div class="customer-header-left">'+
-        '<span class="customer-header-caret'+(custCollapsed?'':' open')+'">&#9658;</span>'+
-        '<span class="customer-header-swatch" style="background:'+custColor+'"></span>'+
-        '<span>'+esc(cust)+'</span>'+
-      '</div>'+
-      '<span class="customer-count">'+totalCount+'</span>';
-    custHdr.addEventListener('click',()=>toggleCollapse(custKey));
-    custDiv.appendChild(custHdr);
-
-    if(!custCollapsed){
-      const custBody=document.createElement('div');
-      custBody.className='customer-body';
-
-      Object.keys(custMap[cust]).sort().forEach(job=>{
-        const jobKey='j:'+cust+':'+job;
-        const jobCollapsed=isCollapsed(jobKey);
-        const panels=custMap[cust][job];
-
-        const jobDiv=document.createElement('div');
-        jobDiv.className='job-group';
-
-        // Job header row
-        const jobHdr=document.createElement('div');
-        jobHdr.className='job-header';
-        jobHdr.innerHTML=
-          '<div class="job-header-left">'+
-            '<span class="job-header-caret'+(jobCollapsed?'':' open')+'">&#9658;</span>'+
-            '<span style="color:var(--accent)">'+esc(job)+'</span>'+
-          '</div>'+
-          '<span class="job-count">'+panels.length+'</span>';
-        jobHdr.addEventListener('click',()=>toggleCollapse(jobKey));
-        jobDiv.appendChild(jobHdr);
-
-        if(!jobCollapsed){
-          const jobPanels=document.createElement('div');
-          jobPanels.className='job-panels';
-          panels.forEach(p=>jobPanels.appendChild(makePoolCard(p)));
-          jobDiv.appendChild(jobPanels);
-        }
-        custBody.appendChild(jobDiv);
-      });
-      custDiv.appendChild(custBody);
-    }
-    list.appendChild(custDiv);
-  });
-}
-function makePoolCard(p){
-  const col=colorForCustomer(p.customer||''),d=document.createElement('div');
-  d.className='pool-card';d.dataset.id=p.id;d.style.borderLeftColor=col;
-  // No job or customer in meta — already shown in parent headers
-  d.innerHTML='<div class="pool-card-name" title="Double-click to rename">'+esc(p.name)+'</div>'+
-    '<div class="pool-card-meta"><span>'+p.buildHrs+'h build</span></div>'+
-    '<button class="pool-card-del" title="Remove from list" onclick="deletePoolCard('+p.id+')">×</button>';
-  d.querySelector('.pool-card-name').addEventListener('dblclick',ev=>{ev.stopPropagation();ev.preventDefault();startPoolRename(p.id,d);});
-  return d;
-}
-function startPoolRename(id,card){
-  const p=pool.find(x=>x.id===id);if(!p)return;
-  const nameDiv=card.querySelector('.pool-card-name');
-  const input=document.createElement('input');input.className='pool-card-name-input';input.value=p.name;
-  nameDiv.replaceWith(input);input.focus();input.select();
-  function commit(){const v=input.value.trim()||p.name;p.name=v;const sc=scheduled.find(s=>s.srcId===id);if(sc)sc.name=v;renderPool();render();}
-  input.addEventListener('blur',commit);
-  input.addEventListener('keydown',ev=>{if(ev.key==='Enter')input.blur();if(ev.key==='Escape'){input.value=p.name;input.blur();}});
-}
-function deletePoolCard(id){deletedPoolIds.add(id);renderPool();renderDashboard();}
-function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
-let editingId=null;
-function openEditModal(id){
-  editingId=id;const s=scheduled.find(x=>x.id===id);
-  document.getElementById('e-name').value=s.name;document.getElementById('e-job').value=s.job;
-  document.getElementById('e-cust').value=s.customer||'';document.getElementById('e-build').value=s.buildHrs;
-  document.getElementById('e-emp').innerHTML=employees.map((e,i)=>'<option value="'+i+'"'+(s.empIdx===i?' selected':'')+'>'+e+'</option>').join('');
-  openModal('edit-modal');
-}
-function saveEdit(){
-  const s=scheduled.find(x=>x.id===editingId),ni=parseInt(document.getElementById('e-emp').value);
-  if(ni!==s.empIdx){s.empIdx=ni;s.startHour=0;}
-  s.name=document.getElementById('e-name').value.trim()||s.name;
-  s.buildHrs=parseInt(document.getElementById('e-build').value)||s.buildHrs;
-  closeModal('edit-modal');render();
-}
-function removeFromChart(){scheduled=scheduled.filter(s=>s.id!==editingId);closeModal('edit-modal');render();}
-function openAddModal(){openModal('add-modal');}
-function confirmAdd(){
-  const name=document.getElementById('a-name').value.trim();if(!name){alert('Enter a name.');return;}
-  pool.push({id:nextId++,job:document.getElementById('a-job').value.trim()||'CUSTOM',customer:document.getElementById('a-cust').value.trim(),name,baseName:name,buildHrs:parseInt(document.getElementById('a-build').value)||8});
-  document.getElementById('a-name').value='';document.getElementById('a-job').value='';document.getElementById('a-cust').value='';
-  closeModal('add-modal');render();
-}
-function openAssignModal(){document.getElementById('as-name').value='';document.getElementById('as-preview').textContent='';document.getElementById('as-emp').innerHTML=employees.map((e,i)=>'<option value="'+i+'">'+e+'</option>').join('');openModal('assign-modal');}
-function updateAssignPreview(){const q=document.getElementById('as-name').value.trim().toLowerCase();if(!q){document.getElementById('as-preview').textContent='';return;}const m=pool.filter(p=>!deletedPoolIds.has(p.id)&&!scheduled.find(s=>s.srcId===p.id)&&p.name.toLowerCase().includes(q));document.getElementById('as-preview').textContent=m.length?m.length+' unscheduled panel'+(m.length>1?'s':'')+' match':'No unscheduled panels match';}
-function confirmBulkAssign(){
-  const q=document.getElementById('as-name').value.trim().toLowerCase(),empIdx=parseInt(document.getElementById('as-emp').value);
-  if(!q){alert('Enter a panel name to search.');return;}
-  const matches=pool.filter(p=>!deletedPoolIds.has(p.id)&&!scheduled.find(s=>s.srcId===p.id)&&p.name.toLowerCase().includes(q)).sort((a,b)=>{const na=parseInt(a.name.match(/#(\d+)$/)?.[1]??'0'),nb=parseInt(b.name.match(/#(\d+)$/)?.[1]??'0');return na-nb||a.name.localeCompare(b.name);});
-  if(!matches.length){alert('No unscheduled panels match.');return;}
-  // Start after the last scheduled panel for this employee
-  const epPanels=getByEmp(empIdx);
-  let bulkStart=0;
-  if(epPanels.length>0){
-    const last=epPanels[epPanels.length-1];
-    bulkStart=(last.startHour||0)+last.buildHrs;
-  }
-  matches.forEach((p,i)=>{
-    scheduled.push({id:nextId++,srcId:p.id,empIdx,startHour:bulkStart,name:p.name,job:p.job,customer:p.customer||'',buildHrs:p.buildHrs});
-    bulkStart+=p.buildHrs;
-  });
-  closeModal('assign-modal');render();
-}
-function openEmpModal(){document.getElementById('emp-edit-list').innerHTML=employees.map((e,i)=>'<div class="emp-row"><span class="emp-num">'+(i+1)+'</span><input value="'+esc(e)+'" data-idx="'+i+'" onchange="employees[this.dataset.idx]=this.value;render()"/></div>').join('');openModal('emp-modal');}
-function openBlockModal(){
-  const empOpts=employees.map((e,i)=>'<option value="'+i+'">'+e+'</option>').join('');
-  document.getElementById('bd-emp-once').innerHTML=empOpts;document.getElementById('bd-emp-recur').innerHTML=empOpts;
-  refreshBlockedLists();
-  const checks=document.querySelectorAll('#bd-day-checks input[type=checkbox]');
-  checks.forEach(cb=>{cb.onchange=()=>{const empIdx=parseInt(document.getElementById('bd-emp-recur').value),dow=parseInt(cb.value);if(cb.checked){if(!blockedRecur.find(b=>b.empIdx===empIdx&&b.dow===dow))blockedRecur.push({empIdx,dow});}else{blockedRecur=blockedRecur.filter(b=>!(b.empIdx===empIdx&&b.dow===dow));}refreshBlockedLists();render();};});
-  document.getElementById('bd-emp-recur').onchange=()=>syncRecurChecks();syncRecurChecks();openModal('block-modal');
-}
-function syncRecurChecks(){const empIdx=parseInt(document.getElementById('bd-emp-recur').value);document.querySelectorAll('#bd-day-checks input[type=checkbox]').forEach(cb=>{cb.checked=!!blockedRecur.find(b=>b.empIdx===empIdx&&b.dow===parseInt(cb.value));});}
-function addBlockedDate(){const empIdx=parseInt(document.getElementById('bd-emp-once').value),ds=document.getElementById('bd-date-once').value;if(!ds){alert('Pick a date.');return;}const d=parseDate(ds);if(d.getDay()===0||d.getDay()===6){alert("That's a weekend.");return;}if(!blockedDates.find(b=>b.empIdx===empIdx&&b.dateStr===ds))blockedDates.push({empIdx,dateStr:ds});document.getElementById('bd-date-once').value='';refreshBlockedLists();render();}
-const DOW_NAMES=['','Mon','Tue','Wed','Thu','Fri'];
-function refreshBlockedLists(){
-  const ol=document.getElementById('blocked-dates-list');ol.innerHTML='';
-  blockedDates.sort((a,b)=>a.dateStr.localeCompare(b.dateStr)).forEach(b=>{const tag=document.createElement('span');tag.className='block-tag';tag.innerHTML=esc(employees[b.empIdx])+': '+b.dateStr+'<button class="block-tag-del" onclick="removeBlockedDate('+b.empIdx+',\'' +b.dateStr+ '\')">\u00d7</button>';ol.appendChild(tag);});
-  if(!blockedDates.length)ol.innerHTML='<span style="font-size:10px;color:var(--muted);font-family:var(--font-mono)">None</span>';
-  const rl=document.getElementById('blocked-recur-list');rl.innerHTML='';
-  blockedRecur.sort((a,b)=>a.empIdx-b.empIdx||a.dow-b.dow).forEach(b=>{const tag=document.createElement('span');tag.className='block-tag';tag.innerHTML=esc(employees[b.empIdx])+': '+DOW_NAMES[b.dow]+'<button class="block-tag-del" onclick="removeBlockedRecur('+b.empIdx+','+b.dow+')">\u00d7</button>';rl.appendChild(tag);});
-  if(!blockedRecur.length)rl.innerHTML='<span style="font-size:10px;color:var(--muted);font-family:var(--font-mono)">None</span>';
-}
-function removeBlockedDate(ei,ds){blockedDates=blockedDates.filter(b=>!(b.empIdx==ei&&b.dateStr===ds));refreshBlockedLists();render();}
-function removeBlockedRecur(ei,dow){blockedRecur=blockedRecur.filter(b=>!(b.empIdx===ei&&b.dow===dow));syncRecurChecks();refreshBlockedLists();render();}
-function openColorModal(){
-  const customers=[...new Set(pool.map(p=>p.customer||'Unknown'))].sort();
-  const list=document.getElementById('cust-color-list');list.innerHTML='';
-  customers.forEach(cust=>{const col=colorForCustomer(cust),row=document.createElement('div');row.className='cust-color-row';row.innerHTML='<span class="cust-color-name">'+esc(cust)+'</span><div class="cust-color-swatch" style="background:'+col+'" title="Click to change" onclick="pickColor(this,'+JSON.stringify(cust)+')"></div>';list.appendChild(row);});
-  openModal('color-modal');
-}
-function pickColor(swatch,customer){
-  const picker=document.getElementById('hidden-color-picker');picker.value=customerColors[customer]||'#4a9eff';
-  picker.style.pointerEvents='all';picker.click();
-  picker.oninput=()=>{customerColors[customer]=picker.value;swatch.style.background=picker.value;render();};
-  picker.onchange=()=>{picker.style.pointerEvents='none';};
-}
 function zoom(d){cellW=Math.max(6,Math.min(40,cellW+d));render();}
 function openModal(id){document.getElementById(id).classList.add('open');}
 function closeModal(id){document.getElementById(id).classList.remove('open');}
