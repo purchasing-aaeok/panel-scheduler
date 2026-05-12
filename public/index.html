@@ -666,7 +666,7 @@ function render(){
         const totalBarW=hitRight-hitLeft;
         if(totalBarW>20){
           const multiLine=totalBarW>cellW*3;
-          const lbl=s.name.length>18?s.name.slice(0,17)+'…':s.name;
+          const fullName=(s.job?s.job+' ':'')+s.name;const lbl=fullName.length>20?fullName.slice(0,19)+'…':fullName;
           const textX=hitLeft+6;
           const textY1=BAR_TOP+BAR_H/2+(multiLine?-3:4);
           const textY2=BAR_TOP+BAR_H/2+8;
@@ -815,7 +815,7 @@ const tooltip=document.getElementById('tooltip');
 canvas.addEventListener('mousemove',ev=>{
   if(barDrag){tooltip.style.display='none';return;}
   const r=canvas.getBoundingClientRect(),hit=hitTest(ev.clientX-r.left,ev.clientY-r.top);
-  if(hit){const s=scheduled.find(x=>x.id===hit.id);if(s){tooltip.innerHTML='<b>'+esc(s.name)+'</b><br>Customer: '+esc(s.customer||'\u2014')+'<br>Job: '+esc(s.job)+'<br>Build: '+s.buildHrs+'h';tooltip.style.display='block';tooltip.style.left=(ev.clientX+14)+'px';tooltip.style.top=(ev.clientY-8)+'px';canvas.style.cursor='grab';return;}}
+  if(hit){const s=scheduled.find(x=>x.id===hit.id);if(s){tooltip.innerHTML='<b>'+(s.job?esc(s.job)+' ':'')+esc(s.name)+'</b><br>Customer: '+esc(s.customer||'\u2014')+'<br>Job: '+esc(s.job)+'<br>Build: '+s.buildHrs+'h';tooltip.style.display='block';tooltip.style.left=(ev.clientX+14)+'px';tooltip.style.top=(ev.clientY-8)+'px';canvas.style.cursor='grab';return;}}
   tooltip.style.display='none';canvas.style.cursor='default';
 });
 canvas.addEventListener('mouseleave',()=>{tooltip.style.display='none';});
@@ -959,7 +959,7 @@ function makePoolCard(p){
   const col=colorForCustomer(p.customer||''),d=document.createElement('div');
   d.className='pool-card';d.dataset.id=p.id;d.style.borderLeftColor=col;
   // No job or customer in meta — already shown in parent headers
-  d.innerHTML='<div class="pool-card-name" title="Double-click to rename">'+esc(p.name)+'</div>'+
+  d.innerHTML='<div class="pool-card-name" title="Double-click to rename">'+(p.job?esc(p.job)+' ':'')+esc(p.name)+'</div>'+
     '<div class="pool-card-meta"><span>'+p.buildHrs+'h build</span></div>'+
     '<button class="pool-card-del" title="Remove from list" onclick="deletePoolCard('+p.id+')">×</button>';
   d.querySelector('.pool-card-name').addEventListener('dblclick',ev=>{ev.stopPropagation();ev.preventDefault();startPoolRename(p.id,d);});
