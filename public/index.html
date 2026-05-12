@@ -1092,7 +1092,7 @@ function startPoolRename(id,card){
   input.addEventListener('blur',commit);
   input.addEventListener('keydown',ev=>{if(ev.key==='Enter')input.blur();if(ev.key==='Escape'){input.value=p.name;input.blur();}});
 }
-function deletePoolCard(id){deletedPoolIds.add(id);renderPool();}
+function deletePoolCard(id){deletedPoolIds.add(id);renderPool();renderDashboard();}
 function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
 let editingId=null;
 function openEditModal(id){
