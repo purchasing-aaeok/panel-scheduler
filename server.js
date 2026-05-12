@@ -60,7 +60,7 @@ function parseExcel() {
     const siMatches = ssXml.match(/<si>[\s\S]*?<\/si>/g) || [];
     siMatches.forEach(si => {
       const texts = si.match(/<t[^>]*>([^<]*)<\/t>/g) || [];
-      strings.push(texts.map(t => t.replace(/<[^>]+>/g,'').trim()).join(''));
+      strings.push(texts.map(t => t.replace(/<[^>]+>/g,'').trim()).join('').replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&apos;/g,"'").replace(/&quot;/g,'"'));
     });
 
     // Parse sheet cells
