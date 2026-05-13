@@ -667,12 +667,12 @@ function render(){
         if(totalBarW>20){
           const multiLine=totalBarW>cellW*3;
           const fullName=(s.job?s.job+' ':'')+s.name;
+          const textX=hitLeft+6;
+          const textY1=BAR_TOP+BAR_H/2+(multiLine?-3:4);
           ctx.font='600 11px IBM Plex Mono,monospace';
           const availW=hitRight-textX-4;
           let lbl=fullName;
           if(ctx.measureText(lbl).width>availW){while(lbl.length>1&&ctx.measureText(lbl+'…').width>availW)lbl=lbl.slice(0,-1);lbl+='…';}
-          const textX=hitLeft+6;
-          const textY1=BAR_TOP+BAR_H/2+(multiLine?-3:4);
           const textY2=BAR_TOP+BAR_H/2+8;
           ctx.save();
           // Clip to total bar so text never bleeds outside it
