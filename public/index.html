@@ -486,7 +486,7 @@ function getWorkDays(){
 const canvas=document.getElementById('gantt-canvas');
 const ctx=canvas.getContext('2d');
 let hitRegions=[];
-function getByEmp(ei){return scheduled.filter(s=>s.empIdx===ei).sort((a,b)=>(a.startHour||0)-(b.startHour||0))}
+function getByEmp(ei){return scheduled.filter(s=>s.empIdx===ei).sort((a,b)=>{const sa=a.startDate?(a.startDate+(a.startHourInDay||0)):'';const sb=b.startDate?(b.startDate+(b.startHourInDay||0)):'';return sa<sb?-1:sa>sb?1:0;})}
 function roundRect(x,y,w,h,r,fill){
   if(w<0.5)return;
   ctx.beginPath();ctx.moveTo(x+r,y);ctx.lineTo(x+w-r,y);ctx.quadraticCurveTo(x+w,y,x+w,y+r);
@@ -612,36 +612,29 @@ function render(){
     });
 
     // Draw bars as filled hour cells
-    const dayAvail=days.map(d=>!isDayBlocked(ei,d));
-    // Build a lookup: available-hour-index → {dayIdx, hourInDay, pixelX}
-    const hourMap=[];
-    for(let di=0;di<days.length;di++){
-      if(!dayAvail[di]) continue;
-      for(let h=0;h<HPD;h++){
-        hourMap.push({di,h,px:LABEL_W+di*dayW+h*cellW});
-      }
-    }
     getByEmp(ei).forEach(s=>{
-      const startHour=s.startHour||0;
-      if(startHour>=hourMap.length) return;
+      // Find the dayIndex in current view for this panel's startDate
+      if(!s.startDate) return; // skip legacy entries without date
+      const startDayIdx=days.findIndex(d=>dateStr(d)===s.startDate);
+      if(startDayIdx<0) return; // not visible in current view
+      const startH=s.startHourInDay||0;
 
-      // Walk through hours — PASS 1: fills and gloss only (no dividers yet)
+      // Build list of (dayIdx, hourInDay) cells this panel occupies, crossing day boundaries
       let remainHrs=s.buildHrs;
-      let hi=startHour; // index into hourMap
-      let hourInDay=hourMap[hi]?hourMap[hi].h:0;
-      let di=hourMap[hi]?hourMap[hi].di:0;
-      const col=colorForCustomer(s.customer||'');
+      let di=startDayIdx;
+      let h=startH;
       let hitLeft=null,hitRight=0;
       const BAR_TOP=ry+BAR_PAD;
       let totalCellsDrawn=0;
       const totalCells=s.buildHrs;
-      // Collect all cell positions for divider pass
       const cellPositions=[];
-      while(remainHrs>0&&hi<hourMap.length){
-        const {px:hx}=hourMap[hi];
+      while(remainHrs>0&&di<days.length){
+        if(isDayBlocked(ei,days[di])){di++;h=0;continue;}
+        const hx=LABEL_W+di*dayW+h*cellW;
         const firstCell=totalCellsDrawn===0;
         const lastCell=totalCellsDrawn===totalCells-1;
         const pad=1;
+        const col=colorForCustomer(s.customer||'');
         roundRect(hx+pad,BAR_TOP,cellW-pad*2,BAR_H,firstCell?3:lastCell?3:1,col);
         const g=ctx.createLinearGradient(hx,BAR_TOP,hx,BAR_TOP+BAR_H);
         g.addColorStop(0,'rgba(255,255,255,.18)');g.addColorStop(1,'rgba(0,0,0,.12)');
@@ -651,17 +644,17 @@ function render(){
         cellPositions.push({hx,last:lastCell});
         totalCellsDrawn++;
         remainHrs--;
-        hi++;
+        h++;
+        if(h>=HPD){h=0;di++;}
       }
-      // PASS 2: draw divider lines (so they sit above fills but below text)
+      // PASS 2: divider lines
       cellPositions.forEach(({hx,last})=>{
         if(!last){
           ctx.strokeStyle='rgba(0,0,0,.12)';ctx.lineWidth=0.5;
           ctx.beginPath();ctx.moveTo(hx+cellW,BAR_TOP+2);ctx.lineTo(hx+cellW,BAR_TOP+BAR_H-2);ctx.stroke();
         }
       });
-
-      // PASS 3: draw label on top of everything — no clipping to day segments
+      // PASS 3: label
       if(hitLeft!==null){
         const totalBarW=hitRight-hitLeft;
         if(totalBarW>20){
@@ -675,9 +668,7 @@ function render(){
           if(ctx.measureText(lbl).width>availW){while(lbl.length>1&&ctx.measureText(lbl+'…').width>availW)lbl=lbl.slice(0,-1);lbl+='…';}
           const textY2=BAR_TOP+BAR_H/2+8;
           ctx.save();
-          // Clip to total bar so text never bleeds outside it
           ctx.beginPath();ctx.rect(hitLeft+2,BAR_TOP+1,totalBarW-4,BAR_H-2);ctx.clip();
-          // White text with a dark shadow for contrast against any bar colour
           ctx.textAlign='left';
           ctx.shadowColor='rgba(0,0,0,0.9)';ctx.shadowBlur=0;
           ctx.shadowOffsetX=1;ctx.shadowOffsetY=1;
@@ -719,48 +710,45 @@ function renderDashboard(){
 
 function hitTest(cx,cy){for(let i=hitRegions.length-1;i>=0;i--){const r=hitRegions[i];if(cx>=r.x&&cx<=r.x+r.w&&cy>=r.y&&cy<=r.y+r.h)return r;}return null;}
 function empAtY(cy){if(cy<HEADER_H)return -1;const ei=Math.floor((cy-HEADER_H)/ROW_H);return ei>=0&&ei<employees.length?ei:-1;}
-function pxToHour(empIdx,cx){
-  // Convert a canvas x pixel into an absolute available-hour offset for this employee
+function pxToDateHour(cx){
+  // Convert a canvas x pixel into {ds: dateStr, h: hourInDay}
   const days=getWorkDays();
-  const dayAvail=days.map(d=>!isDayBlocked(empIdx,d));
   const dayW=cellW*HPD;
-  let hour=0;
   for(let di=0;di<days.length;di++){
     const dx=LABEL_W+di*dayW;
-    if(cx<dx+dayW){
-      if(!dayAvail[di]) break;
-      const hInDay=Math.max(0,Math.floor((cx-dx)/cellW));
-      return hour+Math.min(hInDay,HPD-1);
+    if(cx>=dx&&cx<dx+dayW){
+      const hInDay=Math.max(0,Math.min(HPD-1,Math.floor((cx-dx)/cellW)));
+      return {ds:dateStr(days[di]),h:hInDay};
     }
-    if(dayAvail[di]) hour+=HPD;
   }
-  return hour;
+  // Clamp to last day
+  const last=days[days.length-1];
+  return {ds:dateStr(last),h:HPD-1};
 }
-function clampNoOverlap(empIdx,id,proposedHour,buildHrs){
-  const others=scheduled
-    .filter(s=>s.empIdx===empIdx&&s.id!==id)
-    .sort((a,b)=>(a.startHour||0)-(b.startHour||0));
-  if(!others.length) return Math.max(0,proposedHour);
-
-  // Find a gap that fits buildHrs, starting from the proposed position
-  // Build a list of occupied intervals
-  const intervals=others.map(o=>({s:o.startHour||0,e:(o.startHour||0)+o.buildHrs}));
-
-  // Try proposed hour first — if it fits, use it
-  function fits(h){
-    if(h<0) return false;
-    return intervals.every(iv=>h>=iv.e||h+buildHrs<=iv.s);
-  }
-
-  // Search outward from proposedHour in both directions, hour by hour
+// Convert {ds,h} to a global "absolute hour" integer for overlap arithmetic
+function absHour(ds,h){
+  const d=parseDate(ds);
+  return Math.floor(d.getTime()/86400000)*HPD+(h||0);
+}
+function fromAbsHour(abs){
+  const dayIdx=Math.floor(abs/HPD);
+  const h=abs%HPD;
+  const d=new Date(dayIdx*86400000);
+  return {ds:dateStr(d),h};
+}
+function clampNoOverlap(empIdx,id,proposedDs,proposedH,buildHrs){
+  const others=scheduled.filter(s=>s.empIdx===empIdx&&s.id!==id&&s.startDate);
+  if(!others.length) return {ds:proposedDs,h:Math.max(0,proposedH)};
+  const intervals=others.map(o=>{const s=absHour(o.startDate,o.startHourInDay||0);return {s,e:s+o.buildHrs};});
+  const proposed=absHour(proposedDs,proposedH);
+  function fits(abs){if(abs<0)return false;return intervals.every(iv=>abs>=iv.e||abs+buildHrs<=iv.s);}
   const MAX=500;
   for(let delta=0;delta<=MAX;delta++){
-    if(fits(proposedHour+delta)) return proposedHour+delta;
-    if(proposedHour-delta>=0&&fits(proposedHour-delta)) return proposedHour-delta;
+    if(fits(proposed+delta))return fromAbsHour(proposed+delta);
+    if(proposed-delta>=0&&fits(proposed-delta))return fromAbsHour(proposed-delta);
   }
-  // Fallback: place after last panel
-  const last=intervals[intervals.length-1];
-  return last.e;
+  const last=intervals.sort((a,b)=>a.s-b.s)[intervals.length-1];
+  return fromAbsHour(last.e);
 }
 function orderAtX(empIdx,cx){
   const ep=getByEmp(empIdx),dayAvail=getWorkDays().map(d=>!isDayBlocked(empIdx,d));
@@ -794,18 +782,15 @@ window.addEventListener('mousemove',ev=>{
   const s=scheduled.find(x=>x.id===barDrag.id);if(!s)return;
   const r=canvas.getBoundingClientRect();
   const cy=ev.clientY-r.top;
-  // Allow moving to a different employee row
-  const hoverEmp=empAtY(cy);
-  if(hoverEmp>=0&&hoverEmp!==s.empIdx){
-    // When switching rows, clamp to avoid instant overlap on new row
-    const rawHourNew=pxToHour(hoverEmp,ev.clientX-r.left-(barDrag.grabOffsetPx||0));
-    s.empIdx=hoverEmp;
-    barDrag.empIdx=hoverEmp;
-    s.startHour=clampNoOverlap(hoverEmp,s.id,rawHourNew,s.buildHrs);
-  }
   const targetPx=ev.clientX-r.left-(barDrag.grabOffsetPx||0);
-  const rawHour=pxToHour(s.empIdx,targetPx);
-  s.startHour=clampNoOverlap(s.empIdx,s.id,rawHour,s.buildHrs);
+  const hoverEmp=empAtY(cy);
+  const targetEmp=hoverEmp>=0?hoverEmp:s.empIdx;
+  const raw=pxToDateHour(targetPx);
+  const clamped=clampNoOverlap(targetEmp,s.id,raw.ds,raw.h,s.buildHrs);
+  s.empIdx=targetEmp;
+  barDrag.empIdx=targetEmp;
+  s.startDate=clamped.ds;
+  s.startHourInDay=clamped.h;
   render();
 });
 window.addEventListener('mouseup',ev=>{
@@ -849,9 +834,9 @@ window.addEventListener('mouseup',ev=>{
   if(ei>=0&&cx>=LABEL_W&&cx<=canvas.width){
     const p=poolDrag.p;
     if(!scheduled.find(s=>s.srcId===p.id)){
-      const rawHour=pxToHour(ei,cx);
-      const startHour=clampNoOverlap(ei,-1,rawHour,p.buildHrs);
-      scheduled.push({id:nextId++,srcId:p.id,empIdx:ei,startHour,name:p.name,job:p.job,customer:p.customer||'',buildHrs:p.buildHrs});
+      const raw=pxToDateHour(cx);
+      const clamped=clampNoOverlap(ei,-1,raw.ds,raw.h,p.buildHrs);
+      scheduled.push({id:nextId++,srcId:p.id,empIdx:ei,startDate:clamped.ds,startHourInDay:clamped.h,name:p.name,job:p.job,customer:p.customer||'',buildHrs:p.buildHrs});
       render();
     }
   }
@@ -981,7 +966,7 @@ function openEditModal(id){
 }
 function saveEdit(){
   const s=scheduled.find(x=>x.id===editingId),ni=parseInt(document.getElementById('e-emp').value);
-  if(ni!==s.empIdx){s.empIdx=ni;s.startHour=0;}
+  if(ni!==s.empIdx){s.empIdx=ni;} // keep date/hour as-is when reassigning employee
   s.name=document.getElementById('e-name').value.trim()||s.name;
   s.buildHrs=parseInt(document.getElementById('e-build').value)||s.buildHrs;
   closeModal('edit-modal');render();
@@ -1003,14 +988,23 @@ function confirmBulkAssign(){
   if(!matches.length){alert('No unscheduled panels match.');return;}
   // Start after the last scheduled panel for this employee
   const epPanels=getByEmp(empIdx);
-  let bulkStart=0;
+  // Start after the last scheduled panel for this employee, or from today's start date
+  let bulkDs=document.getElementById('ctrl-start').value||dateStr(nextMonday());
+  let bulkH=0;
   if(epPanels.length>0){
     const last=epPanels[epPanels.length-1];
-    bulkStart=(last.startHour||0)+last.buildHrs;
+    if(last.startDate){
+      const lastAbs=absHour(last.startDate,last.startHourInDay||0)+last.buildHrs;
+      const {ds,h}=fromAbsHour(lastAbs);
+      bulkDs=ds;bulkH=h;
+    }
   }
-  matches.forEach((p,i)=>{
-    scheduled.push({id:nextId++,srcId:p.id,empIdx,startHour:bulkStart,name:p.name,job:p.job,customer:p.customer||'',buildHrs:p.buildHrs});
-    bulkStart+=p.buildHrs;
+  matches.forEach((p)=>{
+    const clamped=clampNoOverlap(empIdx,-1,bulkDs,bulkH,p.buildHrs);
+    scheduled.push({id:nextId++,srcId:p.id,empIdx,startDate:clamped.ds,startHourInDay:clamped.h,name:p.name,job:p.job,customer:p.customer||'',buildHrs:p.buildHrs});
+    const nextAbs=absHour(clamped.ds,clamped.h)+p.buildHrs;
+    const next=fromAbsHour(nextAbs);
+    bulkDs=next.ds;bulkH=next.h;
   });
   closeModal('assign-modal');render();
 }
@@ -1069,8 +1063,22 @@ function applyState(st){
   if(st.customerColors)Object.assign(customerColors,st.customerColors);
   if(st.startDate)document.getElementById('ctrl-start').value=st.startDate;
   if(st.weeks)document.getElementById('ctrl-weeks').value=st.weeks;
-  const byEmp={};
-  scheduled.forEach(s=>{if(s.startHour===undefined){if(!byEmp[s.empIdx])byEmp[s.empIdx]=0;s.startHour=byEmp[s.empIdx];byEmp[s.empIdx]+=s.buildHrs;}});
+  // Migrate legacy startHour-based entries to date-based
+  const viewStart=parseDate(document.getElementById('ctrl-start').value);
+  scheduled.forEach(s=>{
+    if(!s.startDate&&s.startHour!==undefined){
+      // Convert old linear hour offset to a calendar date
+      // Old system skipped blocked days, but we can approximate using work days from view start
+      const days=[];const d=new Date(viewStart);
+      while(days.length<200){if(d.getDay()!==0&&d.getDay()!==6)days.push(new Date(d));d.setDate(d.getDate()+1);}
+      let h=s.startHour||0;
+      const di=Math.floor(h/HPD);
+      const hInDay=h%HPD;
+      const targetDay=days[Math.min(di,days.length-1)];
+      s.startDate=dateStr(targetDay);
+      s.startHourInDay=hInDay;
+    }
+  });
   return true;
 }
 document.addEventListener('DOMContentLoaded',function(){
